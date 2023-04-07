@@ -11,14 +11,17 @@ import (
 	"os"
 	"path/filepath"
 
+	cp "github.com/otiai10/copy"
 	"github.com/urfave/cli/v2"
 	"github.com/xi2/xz"
 )
 
+const appDir = "/home/albert/apps"
+
 type ReleaseAsset struct {
 	Id   int    `json:"id"`
 	Name string `json:"name"`
-	Url  string `json:"browser_download_url"`
+	Url  string `json:"url"`
 }
 
 type Release struct {
@@ -37,6 +40,11 @@ func getRelease(owner string, repo string, tag string) *Release {
 		log.Fatal(err)
 	}
 
+	ghToken := os.Getenv("GH_TOKEN")
+	if ghToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ghToken))
+	}
+
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -47,7 +55,7 @@ func getRelease(owner string, repo string, tag string) *Release {
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		log.Fatalf("Unexpected response from GitHub API: %d", res.StatusCode)
+		log.Fatalf("unexpected response from GitHub API (%s): %d", req.URL, res.StatusCode)
 	}
 
 	resBody, err := ioutil.ReadAll(res.Body)
@@ -65,14 +73,25 @@ func getRelease(owner string, repo string, tag string) *Release {
 }
 
 func fetchAsset(asset *ReleaseAsset, dir string) string {
-	res, err := http.Get(asset.Url)
+	req, err := http.NewRequest(http.MethodGet, asset.Url, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ghToken := os.Getenv("GH_TOKEN")
+	if ghToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ghToken))
+	}
+	req.Header.Set("Accept", "application/octet-stream")
+
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
-		log.Fatalf("Unexpected response from GitHub API: %d", res.StatusCode)
+		log.Fatalf("unexpected response from GitHub API (%s): %d", asset.Url, res.StatusCode)
 	}
 
 	assetpath := filepath.Join(dir, asset.Name)
@@ -117,32 +136,51 @@ func untar(path string, target string) {
 		if err == io.EOF {
 			break
 		}
-
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		// FIXME
-
-		path := filepath.Join(target, header.Name)
-		info := header.FileInfo()
-		if info.IsDir() {
-			if err = os.MkdirAll(path, info.Mode()); err != nil {
+		switch header.Typeflag {
+		case tar.TypeDir:
+			err = os.MkdirAll(filepath.Join(target, header.Name), 0777)
+			if err != nil {
 				log.Fatal(err)
 			}
-			continue
-		}
+		case tar.TypeReg, tar.TypeRegA:
+			fp := filepath.Join(target, header.Name)
+			err = os.MkdirAll(filepath.Dir(fp), 0777)
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer file.Close()
+			w, err := os.Create(fp)
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		_, err = io.Copy(file, tarReader)
-		if err != nil {
-			log.Fatal(err)
+			_, err = io.Copy(w, tarReader)
+			if err != nil {
+				log.Fatal(err)
+			}
+			w.Close()
 		}
+	}
+}
+
+func install(src string, owner string, repo string, tag string) {
+	targetDir := filepath.Join(appDir, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
+	if _, err := os.Stat(targetDir); err == nil {
+		log.Fatalf("directory %s already exists, aborting", targetDir)
+	}
+
+	err := os.MkdirAll(targetDir, 0777)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = cp.Copy(src, targetDir)
+	if err != nil {
+		log.Fatal(err)
 	}
 }
 
@@ -186,6 +224,12 @@ func main() {
 			fmt.Printf("Asset: %s\n", assetpath)
 
 			untar(assetpath, dir)
+			err := os.Remove(assetpath)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			install(dir, owner, repo, tag)
 
 			return nil
 		},
