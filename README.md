@@ -1,2 +1,3 @@
 # instllr
-Service installation utility.
+
+Systemd application installer.
