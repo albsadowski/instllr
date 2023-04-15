@@ -12,13 +12,6 @@ import (
 
 const appDir = "/home/albert/apps"
 
-func loadConfig(dir string) {
-	instllrJson := filepath.Join(dir, "instllr.json")
-	if _, err := os.Stat(instllrJson); err != nil {
-		log.Fatalf("instllr.json not found in %s, aborting", dir)
-	}
-}
-
 func install(src string, owner string, repo string, tag string) {
 	targetDir := filepath.Join(appDir, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
 	if _, err := os.Stat(targetDir); err == nil {
@@ -64,24 +57,26 @@ func main() {
 		Action: func(*cli.Context) error {
 			fmt.Printf("Installing %s/%s:%s\n", owner, repo, tag)
 
-			release := GetGitHubRelease(owner, repo, tag)
+			release := getGitHubRelease(owner, repo, tag)
 			if len(release.Assets) != 1 {
 				log.Fatalf("Expected exactly one release asset, found %d", len(release.Assets))
 			}
 
-			dir := TmpDir()
+			dir := tmpDir()
 			defer os.RemoveAll(dir)
 
-			assetpath := FetchReleaseAsset(&release.Assets[0], dir)
+			assetpath := fetchReleaseAsset(&release.Assets[0], dir)
 			fmt.Printf("Asset: %s\n", assetpath)
 
-			Untar(assetpath, dir)
+			untar(assetpath, dir)
 			err := os.Remove(assetpath)
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			loadConfig(dir)
+			conf := loadConfig(dir)
+			checkDeps(conf.Require)
+
 			install(dir, owner, repo, tag)
 
 			return nil

@@ -24,7 +24,7 @@ type Release struct {
 	Assets []ReleaseAsset `json:"assets"`
 }
 
-func GetGitHubRelease(owner string, repo string, tag string) *Release {
+func getGitHubRelease(owner string, repo string, tag string) *Release {
 	var tagFragment string
 	if tag == "latest" {
 		tagFragment = tag
@@ -72,7 +72,7 @@ func GetGitHubRelease(owner string, repo string, tag string) *Release {
 	return &release
 }
 
-func FetchReleaseAsset(asset *ReleaseAsset, dir string) string {
+func fetchReleaseAsset(asset *ReleaseAsset, dir string) string {
 	req, err := http.NewRequest(http.MethodGet, asset.Url, nil)
 	if err != nil {
 		log.Fatal(err)

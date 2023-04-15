@@ -11,7 +11,7 @@ import (
 	"github.com/xi2/xz"
 )
 
-func TmpDir() string {
+func tmpDir() string {
 	dir, err := ioutil.TempDir("", "")
 	if err != nil {
 		log.Fatal(err)
@@ -19,7 +19,7 @@ func TmpDir() string {
 	return dir
 }
 
-func Untar(path string, target string) {
+func untar(path string, target string) {
 	reader, err := os.Open(path)
 	if err != nil {
 		log.Fatal(err)
