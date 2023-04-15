@@ -25,7 +25,14 @@ type Release struct {
 }
 
 func GetGitHubRelease(owner string, repo string, tag string) *Release {
-	releaseUrl := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/%s", owner, repo, tag)
+	var tagFragment string
+	if tag == "latest" {
+		tagFragment = tag
+	} else {
+		tagFragment = fmt.Sprintf("tags/%s", tag)
+	}
+
+	releaseUrl := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/%s", owner, repo, tagFragment)
 	fmt.Printf("Fetching GitHub release: %s\n", releaseUrl)
 
 	req, err := http.NewRequest(http.MethodGet, releaseUrl, nil)

@@ -15,7 +15,7 @@ const appDir = "/home/albert/apps"
 func loadConfig(dir string) {
 	instllrJson := filepath.Join(dir, "instllr.json")
 	if _, err := os.Stat(instllrJson); err != nil {
-		log.Fatalf("instllr.join not found in %s, aborting", dir)
+		log.Fatalf("instllr.json not found in %s, aborting", dir)
 	}
 }
 
