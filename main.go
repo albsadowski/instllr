@@ -12,7 +12,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const appDir = "/home/albert/apps"
+const appsDir = "apps"
 
 func install(
 	steps []string,
@@ -20,16 +20,22 @@ func install(
 	owner string,
 	repo string,
 	tag string) {
-	targetDir := filepath.Join(appDir, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
-	if _, err := os.Stat(targetDir); err == nil {
-		log.Fatalf("directory %s already exists, aborting", targetDir)
-	}
-
-	err := os.MkdirAll(targetDir, 0777)
+	home, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	targetDir := filepath.Join(home, appsDir, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
+	if _, err = os.Stat(targetDir); err == nil {
+		log.Fatalf("directory %s already exists, aborting", targetDir)
+	}
+
+	err = os.MkdirAll(targetDir, 0777)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Installing at the target directory: %s\n", targetDir)
 	err = cp.Copy(src, targetDir)
 	if err != nil {
 		log.Fatal(err)
@@ -98,7 +104,7 @@ func main() {
 			conf := loadConfig(dir)
 			checkDeps(conf.Require)
 
-			install(conf.InstallSteps, dir, owner, repo, tag)
+			install(conf.InstallSteps, dir, owner, repo, release.Tag)
 
 			return nil
 		},

@@ -26,8 +26,8 @@ type Release struct {
 
 func getGitHubRelease(owner string, repo string, tag string) *Release {
 	var tagFragment string
-	if tag == "latest" {
-		tagFragment = tag
+	if tag == "" || tag == "latest" {
+		tagFragment = "latest"
 	} else {
 		tagFragment = fmt.Sprintf("tags/%s", tag)
 	}
