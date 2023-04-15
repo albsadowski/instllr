@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	cp "github.com/otiai10/copy"
 	"github.com/urfave/cli/v2"
@@ -12,7 +14,12 @@ import (
 
 const appDir = "/home/albert/apps"
 
-func install(src string, owner string, repo string, tag string) {
+func install(
+	steps []string,
+	src string,
+	owner string,
+	repo string,
+	tag string) {
 	targetDir := filepath.Join(appDir, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
 	if _, err := os.Stat(targetDir); err == nil {
 		log.Fatalf("directory %s already exists, aborting", targetDir)
@@ -26,6 +33,20 @@ func install(src string, owner string, repo string, tag string) {
 	err = cp.Copy(src, targetDir)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	for _, step := range steps {
+		split := strings.Fields(step)
+		cmd := exec.Command(split[0], split[1:]...)
+		cmd.Dir = targetDir
+
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		err := cmd.Run()
+		if err != nil {
+			log.Fatalf("install step '%s' failed, aborting", step)
+		}
 	}
 }
 
@@ -77,7 +98,7 @@ func main() {
 			conf := loadConfig(dir)
 			checkDeps(conf.Require)
 
-			install(dir, owner, repo, tag)
+			install(conf.InstallSteps, dir, owner, repo, tag)
 
 			return nil
 		},

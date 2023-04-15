@@ -19,7 +19,8 @@ type ConfRequire struct {
 }
 
 type Conf struct {
-	Require []ConfRequire `json:"require"`
+	Require      []ConfRequire `json:"require"`
+	InstallSteps []string      `json:"install"`
 }
 
 func loadConfig(dir string) *Conf {
@@ -40,7 +41,7 @@ func loadConfig(dir string) *Conf {
 	}
 
 	for _, r := range conf.Require {
-		if r.App == "" || r.Version == "" || r.MinVersion == "" {
+		if r.App == "" {
 			log.Fatal("invalid instllr.json")
 		}
 	}
