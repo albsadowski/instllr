@@ -7,7 +7,8 @@ StandardError=syslog
 SyslogIdentifier={{ .AppName }}
 User={{ .AppName }}
 Group={{ .AppName }}
-Environment={{ .Env }}
+{{range .Env}}Environment={{ . }}
+{{ end }}
 
 [Install]
 WantedBy=multi-user.target

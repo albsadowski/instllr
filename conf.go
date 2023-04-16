@@ -18,9 +18,15 @@ type ConfRequire struct {
 	MinVersion string `json:"minVersion"`
 }
 
+type EnvConf struct {
+	Require []string `json:"require"`
+}
+
 type Conf struct {
 	Require      []ConfRequire `json:"require"`
 	InstallSteps []string      `json:"install"`
+	Run          string        `json:"run"`
+	Env          EnvConf       `json:"env"`
 }
 
 func loadConfig(dir string) *Conf {
@@ -38,6 +44,10 @@ func loadConfig(dir string) *Conf {
 	err = json.Unmarshal(content, &conf)
 	if err != nil {
 		log.Fatal("failed to unmarshal instllr.json", err)
+	}
+
+	if conf.Run == "" {
+		log.Fatal("invalid installr.json")
 	}
 
 	for _, r := range conf.Require {

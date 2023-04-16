@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"fmt"
 	"log"
 	"os"
@@ -12,6 +13,9 @@ import (
 	cp "github.com/otiai10/copy"
 	"github.com/urfave/cli/v2"
 )
+
+//go:embed templates
+var templates embed.FS
 
 func ensureUser(appName string) {
 	err := exec.Command("id", "-u", appName).Run()
@@ -31,8 +35,8 @@ func ensureUser(appName string) {
 	}
 }
 
-func serviceTemplate(appName string, targetDir string) {
-	t, err := template.ParseFiles("templates/service.template")
+func serviceTemplate(appName string, conf *Conf, appEnv []string, targetDir string) {
+	t, err := template.ParseFS(templates, "templates/service.template")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -40,14 +44,12 @@ func serviceTemplate(appName string, targetDir string) {
 	data := struct {
 		AppName    string
 		ExecStart  string
-		Env        string
+		Env        []string
 		WorkingDir string
 	}{
-		AppName: appName,
-		// TODO
-		ExecStart: fmt.Sprintf("/usr/bin/node %s/dist/main.js", targetDir),
-		// TODO
-		Env:        "NODE_ENV=production",
+		AppName:    appName,
+		ExecStart:  conf.Run,
+		Env:        appEnv,
 		WorkingDir: targetDir,
 	}
 
@@ -64,7 +66,8 @@ func serviceTemplate(appName string, targetDir string) {
 
 func install(
 	appName string,
-	steps []string,
+	conf *Conf,
+	appEnv []string,
 	src string,
 	owner string,
 	repo string,
@@ -87,7 +90,7 @@ func install(
 		log.Fatal(err)
 	}
 
-	for _, step := range steps {
+	for _, step := range conf.InstallSteps {
 		split := strings.Fields(step)
 		cmd := exec.Command(split[0], split[1:]...)
 		cmd.Dir = targetDir
@@ -102,11 +105,12 @@ func install(
 	}
 
 	chown(targetDir, appName)
-	serviceTemplate(appName, targetDir)
+	serviceTemplate(appName, conf, appEnv, targetDir)
 }
 
 func main() {
 	var appName, owner, repo, tag string
+	var appEnv cli.StringSlice
 
 	app := &cli.App{
 		Name:  "instllr",
@@ -135,6 +139,11 @@ func main() {
 				Required:    true,
 				Destination: &appName,
 			},
+			&cli.StringSliceFlag{
+				Name:        "app-env",
+				Usage:       "Application env variables",
+				Destination: &appEnv,
+			},
 		},
 		Action: func(*cli.Context) error {
 			fmt.Printf("Installing %s/%s:%s\n", owner, repo, tag)
@@ -159,7 +168,7 @@ func main() {
 			conf := loadConfig(dir)
 			checkDeps(conf.Require)
 
-			install(appName, conf.InstallSteps, dir, owner, repo, release.Tag)
+			install(appName, conf, appEnv.Value(), dir, owner, repo, release.Tag)
 
 			return nil
 		},
