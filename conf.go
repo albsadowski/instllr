@@ -127,3 +127,18 @@ func checkDeps(require []ConfRequire) {
 		fmt.Printf("Dependency check: %s OK\n", r.App)
 	}
 }
+
+func checkEnv(conf EnvConf, appEnv []string) {
+	for _, r := range conf.Require {
+		found := false
+		for _, e := range appEnv {
+			if strings.HasPrefix(e, fmt.Sprintf("%s=", r)) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Fatalf("required application env variable '%s' not found", r)
+		}
+	}
+}

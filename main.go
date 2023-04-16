@@ -211,6 +211,7 @@ func main() {
 
 			conf := loadConfig(dir)
 			checkDeps(conf.Require)
+			checkEnv(conf.Env, appEnv.Value())
 
 			install(conf, appEnv.Value(), dir, owner, repo, release.Tag, host, port)
 
