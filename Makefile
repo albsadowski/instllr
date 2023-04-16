@@ -25,4 +25,4 @@ $(BIN):
 	$(MKD) $(BIN)
 
 $(BIN)/$(NAME): $(GO_SRC)
-	$(GO) build -o $(BIN)/$(NAME) $(GO_SRC)
+	CGO_ENABLED=0 $(GO) build -o $(BIN)/$(NAME) $(GO_SRC)
