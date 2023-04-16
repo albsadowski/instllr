@@ -86,7 +86,10 @@ func proxyTemplate(host string, port int) {
 		}
 	}
 
-	// TODO check SSL certs
+	certsDir := fmt.Sprintf("/etc/letsencrypt/live/%s", host)
+	if _, err := os.Stat(certsDir); err != nil {
+		fmt.Printf("warning: certs directory '%s' does not exist\n", certsDir)
+	}
 
 	f, err := os.Create(fmt.Sprintf("/etc/nginx/sites-enabled/%s.conf", host))
 	if err != nil {
@@ -214,6 +217,11 @@ func main() {
 			checkEnv(conf.Env, appEnv.Value())
 
 			install(conf, appEnv.Value(), dir, owner, repo, release.Tag, host, port)
+
+			fmt.Printf("\n%s has been installed successfully!\n\nNext:\n", host)
+			fmt.Printf("1. Enable the service: systemctl restart %s\n", host)
+			fmt.Printf("2. Start the service systemctl start %s\n", host)
+			fmt.Printf("3. Re-start nginx: systemctl restart nginx\n")
 
 			return nil
 		},
