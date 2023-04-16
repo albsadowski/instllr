@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	cp "github.com/otiai10/copy"
 	"github.com/urfave/cli/v2"
@@ -25,6 +26,37 @@ func ensureUser(appName string) {
 	cmd.Stderr = os.Stderr
 
 	err = cmd.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func serviceTemplate(appName string, targetDir string) {
+	t, err := template.ParseFiles("templates/service.template")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	data := struct {
+		AppName    string
+		ExecStart  string
+		Env        string
+		WorkingDir string
+	}{
+		AppName: appName,
+		// TODO
+		ExecStart: fmt.Sprintf("/usr/bin/node %s/dist/main.js", targetDir),
+		// TODO
+		Env:        "NODE_ENV=production",
+		WorkingDir: targetDir,
+	}
+
+	f, err := os.Create(fmt.Sprintf("/etc/systemd/system/%s.service", appName))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = t.Execute(f, data)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -70,6 +102,7 @@ func install(
 	}
 
 	chown(targetDir, appName)
+	serviceTemplate(appName, targetDir)
 }
 
 func main() {

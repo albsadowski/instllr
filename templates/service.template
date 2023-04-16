@@ -1,0 +1,13 @@
+[Service]
+WorkingDirectory={{ .WorkingDir }}
+ExecStart={{ .ExecStart }}
+Restart=always
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier={{ .AppName }}
+User={{ .AppName }}
+Group={{ .AppName }}
+Environment={{ .Env }}
+
+[Install]
+WantedBy=multi-user.target
