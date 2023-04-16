@@ -35,7 +35,7 @@ func ensureUser(appName string) {
 	}
 }
 
-func serviceTemplate(appName string, conf *Conf, appEnv []string, targetDir string) {
+func serviceTemplate(host string, conf *Conf, appEnv []string, targetDir string) {
 	t, err := template.ParseFS(templates, "templates/service.template")
 	if err != nil {
 		log.Fatal(err)
@@ -47,13 +47,48 @@ func serviceTemplate(appName string, conf *Conf, appEnv []string, targetDir stri
 		Env        []string
 		WorkingDir string
 	}{
-		AppName:    appName,
+		AppName:    host,
 		ExecStart:  conf.Run,
 		Env:        appEnv,
 		WorkingDir: targetDir,
 	}
 
-	f, err := os.Create(fmt.Sprintf("/etc/systemd/system/%s.service", appName))
+	f, err := os.Create(fmt.Sprintf("/etc/systemd/system/%s.service", host))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = t.Execute(f, data)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func proxyTemplate(host string, port int) {
+	t, err := template.ParseFS(templates, "templates/nginx.template")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	data := struct {
+		Host string
+		Port int
+	}{
+		Host: host,
+		Port: port,
+	}
+
+	logsDir := fmt.Sprintf("/var/log/%s", host)
+	if _, err := os.Stat(logsDir); err != nil {
+		err = os.MkdirAll(logsDir, 0777)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// TODO check SSL certs
+
+	f, err := os.Create(fmt.Sprintf("/etc/nginx/sites-enabled/%s.conf", host))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -65,16 +100,17 @@ func serviceTemplate(appName string, conf *Conf, appEnv []string, targetDir stri
 }
 
 func install(
-	appName string,
 	conf *Conf,
 	appEnv []string,
 	src string,
 	owner string,
 	repo string,
-	tag string) {
-	ensureUser(appName)
+	tag string,
+	host string,
+	port int) {
+	ensureUser(host)
 
-	targetDir := filepath.Join("/home", appName, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
+	targetDir := filepath.Join("/home", host, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
 	if _, err := os.Stat(targetDir); err == nil {
 		log.Fatalf("directory %s already exists, aborting", targetDir)
 	}
@@ -104,12 +140,14 @@ func install(
 		}
 	}
 
-	chown(targetDir, appName)
-	serviceTemplate(appName, conf, appEnv, targetDir)
+	chown(targetDir, host)
+	serviceTemplate(host, conf, appEnv, targetDir)
+	proxyTemplate(host, port)
 }
 
 func main() {
-	var appName, owner, repo, tag string
+	var owner, repo, tag, host string
+	var port int
 	var appEnv cli.StringSlice
 
 	app := &cli.App{
@@ -133,16 +171,22 @@ func main() {
 				Usage:       "GitHub tag name",
 				Destination: &tag,
 			},
-			&cli.StringFlag{
-				Name:        "app-name",
-				Usage:       "Application name",
-				Required:    true,
-				Destination: &appName,
-			},
 			&cli.StringSliceFlag{
 				Name:        "app-env",
 				Usage:       "Application env variables",
 				Destination: &appEnv,
+			},
+			&cli.StringFlag{
+				Name:        "host",
+				Usage:       "Hostname",
+				Required:    true,
+				Destination: &host,
+			},
+			&cli.IntFlag{
+				Name:        "port",
+				Usage:       "local application port",
+				Required:    true,
+				Destination: &port,
 			},
 		},
 		Action: func(*cli.Context) error {
@@ -168,7 +212,7 @@ func main() {
 			conf := loadConfig(dir)
 			checkDeps(conf.Require)
 
-			install(appName, conf, appEnv.Value(), dir, owner, repo, release.Tag)
+			install(conf, appEnv.Value(), dir, owner, repo, release.Tag, host, port)
 
 			return nil
 		},
