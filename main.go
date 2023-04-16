@@ -12,25 +12,39 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const appsDir = "apps"
+func ensureUser(appName string) {
+	err := exec.Command("id", "-u", appName).Run()
+	if err == nil {
+		fmt.Printf("User '%s' already exists", appName)
+		return
+	}
+
+	cmd := exec.Command("useradd", "-mrU", appName)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err = cmd.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+}
 
 func install(
+	appName string,
 	steps []string,
 	src string,
 	owner string,
 	repo string,
 	tag string) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatal(err)
-	}
+	ensureUser(appName)
 
-	targetDir := filepath.Join(home, appsDir, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
-	if _, err = os.Stat(targetDir); err == nil {
+	targetDir := filepath.Join("/home", appName, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
+	if _, err := os.Stat(targetDir); err == nil {
 		log.Fatalf("directory %s already exists, aborting", targetDir)
 	}
 
-	err = os.MkdirAll(targetDir, 0777)
+	err := os.MkdirAll(targetDir, 0777)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -54,10 +68,12 @@ func install(
 			log.Fatalf("install step '%s' failed, aborting", step)
 		}
 	}
+
+	chown(targetDir, appName)
 }
 
 func main() {
-	var owner, repo, tag string
+	var appName, owner, repo, tag string
 
 	app := &cli.App{
 		Name:  "instllr",
@@ -79,6 +95,12 @@ func main() {
 				Name:        "gh-tag",
 				Usage:       "GitHub tag name",
 				Destination: &tag,
+			},
+			&cli.StringFlag{
+				Name:        "app-name",
+				Usage:       "Application name",
+				Required:    true,
+				Destination: &appName,
 			},
 		},
 		Action: func(*cli.Context) error {
@@ -104,7 +126,7 @@ func main() {
 			conf := loadConfig(dir)
 			checkDeps(conf.Require)
 
-			install(conf.InstallSteps, dir, owner, repo, release.Tag)
+			install(appName, conf.InstallSteps, dir, owner, repo, release.Tag)
 
 			return nil
 		},

@@ -2,11 +2,15 @@ package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/xi2/xz"
 )
@@ -66,5 +70,44 @@ func untar(path string, target string) {
 			}
 			w.Close()
 		}
+	}
+}
+
+func id(uname string, flag string) int {
+	cmd := exec.Command("id", flag, uname)
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	id, err := strconv.Atoi(strings.TrimSpace(out.String()))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return id
+}
+
+func chown(root string, uname string) {
+	uid, gid := id(uname, "-u"), id(uname, "-g")
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		err = os.Chown(path, uid, gid)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Fatal(err)
 	}
 }
