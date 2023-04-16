@@ -15,7 +15,7 @@ import (
 func ensureUser(appName string) {
 	err := exec.Command("id", "-u", appName).Run()
 	if err == nil {
-		fmt.Printf("User '%s' already exists", appName)
+		fmt.Printf("User '%s' already exists\n", appName)
 		return
 	}
 
