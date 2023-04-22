@@ -13,9 +13,9 @@ import (
 )
 
 type ConfRequire struct {
-	App        string `json:"app"`
-	Version    string `json:"version"`
-	MinVersion string `json:"minVersion"`
+	App        string   `json:"app"`
+	Version    []string `json:"version"`
+	MinVersion string   `json:"minVersion"`
 }
 
 type EnvConf struct {
@@ -23,10 +23,10 @@ type EnvConf struct {
 }
 
 type Conf struct {
-	Require      []ConfRequire `json:"require"`
-	InstallSteps []string      `json:"install"`
-	Run          string        `json:"run"`
-	Env          EnvConf       `json:"env"`
+	Require     []ConfRequire `json:"require"`
+	InstallStep []string      `json:"install"`
+	Run         []string      `json:"run"`
+	Env         EnvConf       `json:"env"`
 }
 
 func loadConfig(dir string) *Conf {
@@ -46,7 +46,7 @@ func loadConfig(dir string) *Conf {
 		log.Fatal("failed to unmarshal instllr.json", err)
 	}
 
-	if conf.Run == "" {
+	if len(conf.Run) == 0 {
 		log.Fatal("invalid installr.json")
 	}
 
@@ -59,8 +59,13 @@ func loadConfig(dir string) *Conf {
 	return &conf
 }
 
-func assertExists(executable string) {
+func assertExists(executable string) string {
 	cmd := exec.Command("which", executable)
+
+	nodePath := os.Getenv("NODE_PATH")
+	if nodePath != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("PATH=$PATH:%s", nodePath))
+	}
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -70,19 +75,29 @@ func assertExists(executable string) {
 		log.Fatalf("Dependency check: failed to check dependency: %s", executable)
 	}
 
-	fmt.Printf("Dependency check: %s found at %s", executable, out.String())
+	path := strings.TrimSpace(out.String())
+	fmt.Printf("Dependency check: %s found at %s", executable, path)
+
+	return path
 }
 
-func getVersion(vcmd string) string {
-	split := strings.Fields(vcmd)
-	cmd := exec.Command(split[0], split[1:]...)
+func getVersion(path string, conf ConfRequire) string {
+	if len(conf.Version) == 0 {
+		log.Fatalf("no version command specified for %s", conf.App)
+	}
+
+	if conf.Version[0] != conf.App {
+		log.Fatalf("invalid dependency spec for %s", conf.App)
+	}
+
+	cmd := exec.Command(path, conf.Version[1:]...)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
 
 	err := cmd.Run()
 	if err != nil {
-		log.Fatalf("Dependency check: failed to execute '%s': %s", vcmd, err)
+		log.Fatalf("dependency check: failed to check version '%s': %s", path, err)
 	}
 
 	return strings.TrimSpace(out.String())
@@ -117,15 +132,21 @@ func assertVersion(ver string, minv string) {
 	}
 }
 
-func checkDeps(require []ConfRequire) {
+func resolveDeps(require []ConfRequire) *map[string]string {
+	deps := make(map[string]string)
+
 	for _, r := range require {
-		assertExists(r.App)
-		version := getVersion(r.Version)
+		path := assertExists(r.App)
+		version := getVersion(path, r)
 		fmt.Printf("Dependency check: %s version: %s\n", r.App, version)
 
 		assertVersion(version, r.MinVersion)
 		fmt.Printf("Dependency check: %s OK\n", r.App)
+
+		deps[r.App] = path
 	}
+
+	return &deps
 }
 
 func checkEnv(conf EnvConf, appEnv []string) {

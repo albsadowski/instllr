@@ -35,7 +35,16 @@ func ensureUser(appName string) {
 	}
 }
 
-func serviceTemplate(host string, conf *Conf, appEnv []string, targetDir string) {
+func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []string, targetDir string) {
+	var run []string
+	cmdPath, found := (*deps)[conf.Run[0]]
+	if !found {
+		fmt.Printf("warn: command path not resolved %s\n", conf.Run[0])
+		run = conf.Run
+	} else {
+		run = append([]string{cmdPath}, conf.Run[1:]...)
+	}
+
 	t, err := template.ParseFS(templates, "templates/service.template")
 	if err != nil {
 		log.Fatal(err)
@@ -43,12 +52,12 @@ func serviceTemplate(host string, conf *Conf, appEnv []string, targetDir string)
 
 	data := struct {
 		AppName    string
-		ExecStart  string
+		ExecStart  []string
 		Env        []string
 		WorkingDir string
 	}{
 		AppName:    host,
-		ExecStart:  conf.Run,
+		ExecStart:  run,
 		Env:        appEnv,
 		WorkingDir: targetDir,
 	}
@@ -104,6 +113,7 @@ func proxyTemplate(host string, port int) {
 
 func install(
 	conf *Conf,
+	deps *map[string]string,
 	appEnv []string,
 	src string,
 	owner string,
@@ -129,22 +139,28 @@ func install(
 		log.Fatal(err)
 	}
 
-	for _, step := range conf.InstallSteps {
-		split := strings.Fields(step)
-		cmd := exec.Command(split[0], split[1:]...)
-		cmd.Dir = targetDir
+	if len(conf.InstallStep) > 0 {
+		var cmd *exec.Cmd
+		path, found := (*deps)[conf.InstallStep[0]]
+		if !found {
+			fmt.Printf("warn: path not resolved for %s\n", conf.InstallStep[0])
+			cmd = exec.Command(conf.InstallStep[0], conf.InstallStep[1:]...)
+		} else {
+			cmd = exec.Command(path, conf.InstallStep[1:]...)
+		}
 
+		cmd.Dir = targetDir
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
 		err := cmd.Run()
 		if err != nil {
-			log.Fatalf("install step '%s' failed, aborting", step)
+			log.Fatalf("install step '%s' failed, aborting\n", strings.Join(conf.InstallStep, " "))
 		}
 	}
 
 	chown(targetDir, host)
-	serviceTemplate(host, conf, appEnv, targetDir)
+	serviceTemplate(deps, host, conf, appEnv, targetDir)
 	proxyTemplate(host, port)
 }
 
@@ -213,14 +229,14 @@ func main() {
 			}
 
 			conf := loadConfig(dir)
-			checkDeps(conf.Require)
+			deps := resolveDeps(conf.Require)
 			checkEnv(conf.Env, appEnv.Value())
 
-			install(conf, appEnv.Value(), dir, owner, repo, release.Tag, host, port)
+			install(conf, deps, appEnv.Value(), dir, owner, repo, release.Tag, host, port)
 
 			fmt.Printf("\n%s has been installed successfully!\n\nNext:\n", host)
-			fmt.Printf("1. Enable the service: systemctl restart %s\n", host)
-			fmt.Printf("2. Start the service systemctl start %s\n", host)
+			fmt.Printf("1. Enable and start the service: systemctl enable --now %s\n", host)
+			fmt.Println("2. Request certificate from certbot")
 			fmt.Printf("3. Re-start nginx: systemctl restart nginx\n")
 
 			return nil
