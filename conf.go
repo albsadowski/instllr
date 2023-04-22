@@ -64,7 +64,7 @@ func assertExists(executable string) string {
 
 	nodePath := os.Getenv("NODE_PATH")
 	if nodePath != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("PATH=$PATH:%s", nodePath))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("PATH=%s:$PATH", nodePath))
 	}
 
 	var out bytes.Buffer
