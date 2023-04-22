@@ -16,25 +16,14 @@ import (
 )
 
 func tmpDir() string {
-	dir, err := ioutil.TempDir("", "")
-	if err != nil {
-		log.Fatal(err)
-	}
-	return dir
+	return unsafeGet(ioutil.TempDir("", ""))
 }
 
 func untar(path string, target string) {
-	reader, err := os.Open(path)
-	if err != nil {
-		log.Fatal(err)
-	}
+	reader := unsafeGet(os.Open(path))
 	defer reader.Close()
 
-	r, err := xz.NewReader(reader, 0)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	r := unsafeGet(xz.NewReader(reader, 0))
 	tarReader := tar.NewReader(r)
 
 	for {
@@ -48,32 +37,20 @@ func untar(path string, target string) {
 
 		switch header.Typeflag {
 		case tar.TypeDir:
-			err = os.MkdirAll(filepath.Join(target, header.Name), 0777)
-			if err != nil {
-				log.Fatal(err)
-			}
+			unsafe(os.MkdirAll(filepath.Join(target, header.Name), 0777))
 		case tar.TypeReg, tar.TypeRegA:
 			fp := filepath.Join(target, header.Name)
-			err = os.MkdirAll(filepath.Dir(fp), 0777)
-			if err != nil {
-				log.Fatal(err)
-			}
+			unsafe(os.MkdirAll(filepath.Dir(fp), 0777))
 
-			w, err := os.Create(fp)
-			if err != nil {
-				log.Fatal(err)
-			}
+			w := unsafeGet(os.Create(fp))
 
-			_, err = io.Copy(w, tarReader)
-			if err != nil {
-				log.Fatal(err)
-			}
+			unsafeGet(io.Copy(w, tarReader))
 			w.Close()
 		}
 	}
 }
 
-func id(uname string, flag string) int {
+func id(uname string, flag string) (int, error) {
 	cmd := exec.Command("id", flag, uname)
 
 	var out bytes.Buffer
@@ -81,33 +58,21 @@ func id(uname string, flag string) int {
 
 	err := cmd.Run()
 	if err != nil {
-		log.Fatal(err)
+		return 0, err
 	}
 
-	id, err := strconv.Atoi(strings.TrimSpace(out.String()))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return id
+	return strconv.Atoi(strings.TrimSpace(out.String()))
 }
 
 func chown(root string, uname string) {
-	uid, gid := id(uname, "-u"), id(uname, "-g")
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	uid, gid := unsafeGet(id(uname, "-u")), unsafeGet(id(uname, "-g"))
+	unsafe(filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		err = os.Chown(path, uid, gid)
-		if err != nil {
-			log.Fatal(err)
-		}
+		unsafe(os.Chown(path, uid, gid))
 
 		return nil
-	})
-
-	if err != nil {
-		log.Fatal(err)
-	}
+	}))
 }

@@ -35,11 +35,7 @@ func getGitHubRelease(owner string, repo string, tag string) *Release {
 	releaseUrl := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/%s", owner, repo, tagFragment)
 	fmt.Printf("Fetching GitHub release: %s\n", releaseUrl)
 
-	req, err := http.NewRequest(http.MethodGet, releaseUrl, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	req := unsafeGet(http.NewRequest(http.MethodGet, releaseUrl, nil))
 	ghToken := os.Getenv("GH_TOKEN")
 	if ghToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ghToken))
@@ -48,46 +44,30 @@ func getGitHubRelease(owner string, repo string, tag string) *Release {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
+	res := unsafeGet(http.DefaultClient.Do(req))
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
 		log.Fatalf("unexpected response from GitHub API (%s): %d", req.URL, res.StatusCode)
 	}
 
-	resBody, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	resBody := unsafeGet(ioutil.ReadAll(res.Body))
 
 	var release Release
-	err = json.Unmarshal(resBody, &release)
-	if err != nil {
-		log.Fatal(err)
-	}
+	unsafe(json.Unmarshal(resBody, &release))
 
 	return &release
 }
 
 func fetchReleaseAsset(asset *ReleaseAsset, dir string) string {
-	req, err := http.NewRequest(http.MethodGet, asset.Url, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	req := unsafeGet(http.NewRequest(http.MethodGet, asset.Url, nil))
 	ghToken := os.Getenv("GH_TOKEN")
 	if ghToken != "" {
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ghToken))
 	}
 	req.Header.Set("Accept", "application/octet-stream")
 
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
+	res := unsafeGet(http.DefaultClient.Do(req))
 	defer res.Body.Close()
 
 	if res.StatusCode != 200 {
@@ -95,16 +75,10 @@ func fetchReleaseAsset(asset *ReleaseAsset, dir string) string {
 	}
 
 	assetpath := filepath.Join(dir, asset.Name)
-	out, err := os.Create(assetpath)
-	if err != nil {
-		log.Fatal(err)
-	}
+	out := unsafeGet(os.Create(assetpath))
 	defer out.Close()
 
-	_, err = io.Copy(out, res.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	unsafeGet(io.Copy(out, res.Body))
 
 	return assetpath
 }

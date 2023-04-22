@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"embed"
 	"fmt"
 	"log"
@@ -18,30 +17,26 @@ import (
 //go:embed templates
 var templates embed.FS
 
-func callId(flag string, name string) (string, error) {
-	cmd := exec.Command("id", flag, name)
-
-	var out bytes.Buffer
-	cmd.Stdout = &out
-
-	err := cmd.Run()
+func unsafeGet[T interface{}](value T, err error) T {
 	if err != nil {
-		return "", err
+		log.Fatal(err)
 	}
 
-	return strings.TrimSpace(out.String()), nil
+	return value
 }
 
-func ensureUser(appName string) (string, string) {
-	uid, err := callId("-u", appName)
+func unsafe(err error) {
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func ensureUser(appName string) (int, int) {
+	uid, err := id(appName, "-u")
 
 	if err == nil {
 		fmt.Printf("User '%s' already exists\n", appName)
-
-		gid, err := callId("-g", appName)
-		if err != nil {
-			log.Fatal(err)
-		}
+		gid := unsafeGet(id(appName, "-g"))
 
 		return uid, gid
 	}
@@ -51,25 +46,12 @@ func ensureUser(appName string) (string, string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	err = cmd.Run()
-	if err != nil {
-		log.Fatal(err)
-	}
+	unsafe(cmd.Run())
 
-	uid, err = callId("-u", appName)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	gid, err := callId("-g", appName)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return uid, gid
+	return unsafeGet(id(appName, "-u")), unsafeGet(id(appName, "-g"))
 }
 
-func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []string, targetDir string, uid string, gid string) {
+func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []string, targetDir string, uid int, gid int) {
 	var run []string
 	cmdPath, found := (*deps)[conf.Run[0]]
 	if !found {
@@ -79,18 +61,15 @@ func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []
 		run = append([]string{cmdPath}, conf.Run[1:]...)
 	}
 
-	t, err := template.ParseFS(templates, "templates/service.template")
-	if err != nil {
-		log.Fatal(err)
-	}
+	t := unsafeGet(template.ParseFS(templates, "templates/service.template"))
 
 	data := struct {
 		AppName    string
 		ExecStart  string
 		Env        []string
 		WorkingDir string
-		Uid        string
-		Gid        string
+		Uid        int
+		Gid        int
 	}{
 		AppName:    host,
 		ExecStart:  strings.Join(run, " "),
@@ -100,22 +79,12 @@ func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []
 		Gid:        gid,
 	}
 
-	f, err := os.Create(fmt.Sprintf("/etc/systemd/system/%s.service", host))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = t.Execute(f, data)
-	if err != nil {
-		log.Fatal(err)
-	}
+	f := unsafeGet(os.Create(fmt.Sprintf("/etc/systemd/system/%s.service", host)))
+	unsafe(t.Execute(f, data))
 }
 
 func proxyTemplate(host string, port int) {
-	t, err := template.ParseFS(templates, "templates/nginx.template")
-	if err != nil {
-		log.Fatal(err)
-	}
+	t := unsafeGet(template.ParseFS(templates, "templates/nginx.template"))
 
 	data := struct {
 		Host string
@@ -127,10 +96,7 @@ func proxyTemplate(host string, port int) {
 
 	logsDir := fmt.Sprintf("/var/log/%s", host)
 	if _, err := os.Stat(logsDir); err != nil {
-		err = os.MkdirAll(logsDir, 0777)
-		if err != nil {
-			log.Fatal(err)
-		}
+		unsafe(os.MkdirAll(logsDir, 0777))
 	}
 
 	certsDir := fmt.Sprintf("/etc/letsencrypt/live/%s", host)
@@ -138,15 +104,8 @@ func proxyTemplate(host string, port int) {
 		fmt.Printf("warning: certs directory '%s' does not exist\n", certsDir)
 	}
 
-	f, err := os.Create(fmt.Sprintf("/etc/nginx/sites-enabled/%s.conf", host))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	err = t.Execute(f, data)
-	if err != nil {
-		log.Fatal(err)
-	}
+	f := unsafeGet(os.Create(fmt.Sprintf("/etc/nginx/sites-enabled/%s.conf", host)))
+	unsafe(t.Execute(f, data))
 }
 
 func install(
@@ -166,16 +125,10 @@ func install(
 		log.Fatalf("directory %s already exists, aborting", targetDir)
 	}
 
-	err := os.MkdirAll(targetDir, 0777)
-	if err != nil {
-		log.Fatal(err)
-	}
+	unsafe(os.MkdirAll(targetDir, 0777))
 
 	fmt.Printf("Installing at the target directory: %s\n", targetDir)
-	err = cp.Copy(src, targetDir)
-	if err != nil {
-		log.Fatal(err)
-	}
+	unsafe(cp.Copy(src, targetDir))
 
 	if len(conf.InstallStep) > 0 {
 		var cmd *exec.Cmd
@@ -262,10 +215,7 @@ func main() {
 			fmt.Printf("Asset: %s\n", assetpath)
 
 			untar(assetpath, dir)
-			err := os.Remove(assetpath)
-			if err != nil {
-				log.Fatal(err)
-			}
+			unsafe(os.Remove(assetpath))
 
 			conf := loadConfig(dir)
 			deps := resolveDeps(conf.Require)
@@ -282,7 +232,5 @@ func main() {
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
-		log.Fatal(err)
-	}
+	unsafe(app.Run(os.Args))
 }
