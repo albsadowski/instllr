@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
 	"log"
@@ -17,11 +18,32 @@ import (
 //go:embed templates
 var templates embed.FS
 
-func ensureUser(appName string) {
-	err := exec.Command("id", "-u", appName).Run()
+func callId(flag string, name string) (string, error) {
+	cmd := exec.Command("id", flag, name)
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(out.String()), nil
+}
+
+func ensureUser(appName string) (string, string) {
+	uid, err := callId("-u", appName)
+
 	if err == nil {
 		fmt.Printf("User '%s' already exists\n", appName)
-		return
+
+		gid, err := callId("-g", appName)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return uid, gid
 	}
 
 	cmd := exec.Command("useradd", "-mrU", appName)
@@ -33,9 +55,21 @@ func ensureUser(appName string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	uid, err = callId("-u", appName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	gid, err := callId("-g", appName)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return uid, gid
 }
 
-func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []string, targetDir string) {
+func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []string, targetDir string, uid string, gid string) {
 	var run []string
 	cmdPath, found := (*deps)[conf.Run[0]]
 	if !found {
@@ -55,11 +89,15 @@ func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []
 		ExecStart  string
 		Env        []string
 		WorkingDir string
+		Uid        string
+		Gid        string
 	}{
 		AppName:    host,
 		ExecStart:  strings.Join(run, " "),
 		Env:        appEnv,
 		WorkingDir: targetDir,
+		Uid:        uid,
+		Gid:        gid,
 	}
 
 	f, err := os.Create(fmt.Sprintf("/etc/systemd/system/%s.service", host))
@@ -121,7 +159,7 @@ func install(
 	tag string,
 	host string,
 	port int) {
-	ensureUser(host)
+	uid, gid := ensureUser(host)
 
 	targetDir := filepath.Join("/home", host, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
 	if _, err := os.Stat(targetDir); err == nil {
@@ -161,7 +199,7 @@ func install(
 	}
 
 	chown(targetDir, host)
-	serviceTemplate(deps, host, conf, appEnv, targetDir)
+	serviceTemplate(deps, host, conf, appEnv, targetDir, uid, gid)
 	proxyTemplate(host, port)
 }
 

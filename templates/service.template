@@ -5,8 +5,8 @@ Restart=always
 StandardOutput=syslog
 StandardError=syslog
 SyslogIdentifier={{ .AppName }}
-User={{ .AppName }}
-Group={{ .AppName }}
+User={{ .Uid }}
+Group={{ .Gid }}
 {{range .Env}}Environment={{ . }}
 {{ end }}
 
