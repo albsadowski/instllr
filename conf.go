@@ -29,6 +29,17 @@ type Conf struct {
 	Env         EnvConf       `json:"env"`
 }
 
+func command(cmds ...string) *exec.Cmd {
+	cmd := exec.Command(cmds[0], cmds[1:]...)
+
+	nodePath := os.Getenv("NODE_PATH")
+	if nodePath != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("PATH=%s:$PATH", nodePath))
+	}
+
+	return cmd
+}
+
 func loadConfig(dir string) *Conf {
 	instllrJson := filepath.Join(dir, "instllr.json")
 	if _, err := os.Stat(instllrJson); err != nil {
@@ -60,12 +71,7 @@ func loadConfig(dir string) *Conf {
 }
 
 func assertExists(executable string) string {
-	cmd := exec.Command("which", executable)
-
-	nodePath := os.Getenv("NODE_PATH")
-	if nodePath != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("PATH=%s:$PATH", nodePath))
-	}
+	cmd := command("which", executable)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -90,7 +96,8 @@ func getVersion(path string, conf ConfRequire) string {
 		log.Fatalf("invalid dependency spec for %s", conf.App)
 	}
 
-	cmd := exec.Command(path, conf.Version[1:]...)
+	args := append([]string{path}, conf.Version[1:]...)
+	cmd := command(args...)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out

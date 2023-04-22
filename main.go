@@ -144,9 +144,10 @@ func install(
 		path, found := (*deps)[conf.InstallStep[0]]
 		if !found {
 			fmt.Printf("warn: path not resolved for %s\n", conf.InstallStep[0])
-			cmd = exec.Command(conf.InstallStep[0], conf.InstallStep[1:]...)
+			cmd = command(conf.InstallStep...)
 		} else {
-			cmd = exec.Command(path, conf.InstallStep[1:]...)
+			args := append([]string{path}, conf.InstallStep[1:]...)
+			cmd = command(args...)
 		}
 
 		cmd.Dir = targetDir
