@@ -156,8 +156,31 @@ func install(
 	proxyTemplate(host, port)
 }
 
+func parseArg(arg string) (string, string, string) {
+	if arg == "" {
+		log.Fatal("at least one argument expected")
+	}
+
+	var tag string
+	tagsplit := strings.Split(arg, ":")
+	if len(tagsplit) > 2 {
+		log.Fatalf("invalid argument: %s\n", arg)
+	} else if len(tagsplit) == 2 {
+		tag = tagsplit[1]
+	} else {
+		tag = "latest"
+	}
+
+	split := strings.Split(tagsplit[0], "/")
+	if len(split) != 2 {
+		log.Fatalf("invalid argument: %s\n", arg)
+	}
+
+	return split[0], split[1], tag
+}
+
 func main() {
-	var owner, repo, tag, host string
+	var host string
 	var port int
 	var appEnv cli.StringSlice
 
@@ -165,23 +188,6 @@ func main() {
 		Name:  "instllr",
 		Usage: "install a service",
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        "gh-repo",
-				Usage:       "GitHub repository name",
-				Required:    true,
-				Destination: &repo,
-			},
-			&cli.StringFlag{
-				Name:        "gh-owner",
-				Usage:       "GitHub repository owner",
-				Required:    true,
-				Destination: &owner,
-			},
-			&cli.StringFlag{
-				Name:        "gh-tag",
-				Usage:       "GitHub tag name",
-				Destination: &tag,
-			},
 			&cli.StringSliceFlag{
 				Name:        "app-env",
 				Usage:       "Application env variables",
@@ -200,7 +206,8 @@ func main() {
 				Destination: &port,
 			},
 		},
-		Action: func(*cli.Context) error {
+		Action: func(ctx *cli.Context) error {
+			owner, repo, tag := parseArg(ctx.Args().First())
 			fmt.Printf("Installing %s/%s:%s\n", owner, repo, tag)
 
 			release := getGitHubRelease(owner, repo, tag)
