@@ -52,12 +52,12 @@ func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []
 
 	data := struct {
 		AppName    string
-		ExecStart  []string
+		ExecStart  string
 		Env        []string
 		WorkingDir string
 	}{
 		AppName:    host,
-		ExecStart:  run,
+		ExecStart:  strings.Join(run, " "),
 		Env:        appEnv,
 		WorkingDir: targetDir,
 	}
