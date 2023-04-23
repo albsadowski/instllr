@@ -153,7 +153,7 @@ func install(
 
 	targetDir := filepath.Join("/home", host, fmt.Sprintf("%s-%s-%s", s.Owner, s.Repo, r.Tag))
 	if _, err := os.Stat(targetDir); err == nil {
-		log.Fatalf("directory %s already exists, aborting", targetDir)
+		unsafe(os.RemoveAll(targetDir))
 	}
 
 	unsafe(os.MkdirAll(targetDir, 0777))
@@ -241,12 +241,28 @@ func storeVersion(host string, r *Release) {
 	unsafe(os.WriteFile(path, []byte(r.Tag), 0666))
 }
 
+func checkInstalledVersion(host string, r *Release) string {
+	bs, err := os.ReadFile(filepath.Join(storageDir(), host))
+	if err != nil {
+		return ""
+	}
+
+	ver := string(bs)
+	assertVersion(r.Tag, string(bs))
+	return ver
+}
+
 func installCmd(s *Service, appEnv []string, host string, port int) {
 	fmt.Printf("Installing %s\n", s.String())
 
 	release := getGitHubRelease(s)
 	if len(release.Assets) != 1 {
 		log.Fatalf("Expected exactly one release asset, found %d", len(release.Assets))
+	}
+
+	currVer := checkInstalledVersion(host, release)
+	if currVer == release.Tag {
+		log.Fatalf("Version %s already installed\n", currVer)
 	}
 
 	dir := tmpDir()
