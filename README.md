@@ -58,4 +58,8 @@ Example:
 
 ## Cron
 
-If you drop `instllr` command with a `latest` tag into your crontab, you have a poor man's continuous delivery.
+If you drop `instllr` command with a `latest` tag into your crontab, you have a poor man's continuous delivery, e.g.:
+
+```
+* * * * * NODE_PATH=/opt/node-v18.15.0/bin instllr --app-env NODE_ENV=production --host <app-host> --port <local-port> install <gh-user>/<gh-repo> 2>&1 | logger -t CRON
+```
