@@ -17,6 +17,30 @@ import (
 //go:embed templates
 var templates embed.FS
 
+type Service struct {
+	Owner string `json:"owner"`
+	Repo  string `json:"repo"`
+	Tag   string `json:"tag"`
+}
+
+func (s *Service) String() string {
+	return fmt.Sprintf("%s/%s:%s", s.Owner, s.Repo, s.Tag)
+}
+
+type Command int
+
+const (
+	Install Command = iota
+	Uninstall
+)
+
+var (
+	commands = map[string]Command{
+		"install":   Install,
+		"uninstall": Uninstall,
+	}
+)
+
 func unsafeGet[T interface{}](value T, err error) T {
 	if err != nil {
 		log.Fatal(err)
@@ -109,18 +133,17 @@ func proxyTemplate(host string, port int) {
 }
 
 func install(
+	s *Service,
+	r *Release,
 	conf *Conf,
 	deps *map[string]string,
 	appEnv []string,
 	src string,
-	owner string,
-	repo string,
-	tag string,
 	host string,
 	port int) {
 	uid, gid := ensureUser(host)
 
-	targetDir := filepath.Join("/home", host, fmt.Sprintf("%s-%s-%s", owner, repo, tag))
+	targetDir := filepath.Join("/home", host, fmt.Sprintf("%s-%s-%s", s.Owner, s.Repo, r.Tag))
 	if _, err := os.Stat(targetDir); err == nil {
 		log.Fatalf("directory %s already exists, aborting", targetDir)
 	}
@@ -156,11 +179,17 @@ func install(
 	proxyTemplate(host, port)
 }
 
-func parseArg(arg string) (string, string, string) {
-	if arg == "" {
-		log.Fatal("at least one argument expected")
+func parseArgs(args cli.Args) (Command, *Service) {
+	if args.Len() != 2 {
+		log.Fatal("exactly two arguments expected")
 	}
 
+	c, ok := commands[strings.ToLower(args.First())]
+	if !ok {
+		log.Fatalf("invalid command: %s\n", args.First())
+	}
+
+	arg := args.Get(1)
 	var tag string
 	tagsplit := strings.Split(arg, ":")
 	if len(tagsplit) > 2 {
@@ -176,7 +205,11 @@ func parseArg(arg string) (string, string, string) {
 		log.Fatalf("invalid argument: %s\n", arg)
 	}
 
-	return split[0], split[1], tag
+	return c, &Service{
+		Owner: split[0],
+		Repo:  split[1],
+		Tag:   tag,
+	}
 }
 
 func main() {
@@ -207,10 +240,14 @@ func main() {
 			},
 		},
 		Action: func(ctx *cli.Context) error {
-			owner, repo, tag := parseArg(ctx.Args().First())
-			fmt.Printf("Installing %s/%s:%s\n", owner, repo, tag)
+			c, s := parseArgs(ctx.Args())
+			if c == Install {
+				fmt.Printf("Installing %s\n", s.String())
+			} else if c == Uninstall {
+				fmt.Printf("Uninstalling %s\n", s.String())
+			}
 
-			release := getGitHubRelease(owner, repo, tag)
+			release := getGitHubRelease(s)
 			if len(release.Assets) != 1 {
 				log.Fatalf("Expected exactly one release asset, found %d", len(release.Assets))
 			}
@@ -228,7 +265,7 @@ func main() {
 			deps := resolveDeps(conf.Require)
 			checkEnv(conf.Env, appEnv.Value())
 
-			install(conf, deps, appEnv.Value(), dir, owner, repo, release.Tag, host, port)
+			install(s, release, conf, deps, appEnv.Value(), dir, host, port)
 
 			fmt.Printf("\n%s has been installed successfully!\n\nNext:\n", host)
 			fmt.Printf("1. Enable and start the service: systemctl enable --now %s\n", host)

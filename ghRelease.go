@@ -24,15 +24,15 @@ type Release struct {
 	Assets []ReleaseAsset `json:"assets"`
 }
 
-func getGitHubRelease(owner string, repo string, tag string) *Release {
+func getGitHubRelease(s *Service) *Release {
 	var tagFragment string
-	if tag == "" || tag == "latest" {
+	if s.Tag == "" || s.Tag == "latest" {
 		tagFragment = "latest"
 	} else {
-		tagFragment = fmt.Sprintf("tags/%s", tag)
+		tagFragment = fmt.Sprintf("tags/%s", s.Tag)
 	}
 
-	releaseUrl := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/%s", owner, repo, tagFragment)
+	releaseUrl := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/%s", s.Owner, s.Repo, tagFragment)
 	fmt.Printf("Fetching GitHub release: %s\n", releaseUrl)
 
 	req := unsafeGet(http.NewRequest(http.MethodGet, releaseUrl, nil))

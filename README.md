@@ -17,7 +17,7 @@ NODE_PATH=<path-to-nodejs-bin> \
 instllr --host <my-host.domain.com> \
         --port <local-port>
         --app-env <some env; e.g., config file path> \
-        <owner>/<repo>:<tag>
+        install <owner>/<repo>:<tag>
 ```
 4. `instllr` fetches the GitHub release asset and:
 * creates a user and a group `<my-host.domain.com>`,
