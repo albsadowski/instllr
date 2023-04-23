@@ -75,6 +75,14 @@ func ensureUser(appName string) (int, int) {
 	return unsafeGet(id(appName, "-u")), unsafeGet(id(appName, "-g"))
 }
 
+func systemdConf(host string) string {
+	return fmt.Sprintf("/etc/systemd/system/%s.service", host)
+}
+
+func nginxConf(host string) string {
+	return fmt.Sprintf("/etc/nginx/sites-enabled/%s.conf", host)
+}
+
 func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []string, targetDir string, uid int, gid int) {
 	var run []string
 	cmdPath, found := (*deps)[conf.Run[0]]
@@ -103,7 +111,7 @@ func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []
 		Gid:        gid,
 	}
 
-	f := unsafeGet(os.Create(fmt.Sprintf("/etc/systemd/system/%s.service", host)))
+	f := unsafeGet(os.Create(systemdConf(host)))
 	unsafe(t.Execute(f, data))
 }
 
@@ -128,7 +136,7 @@ func proxyTemplate(host string, port int) {
 		fmt.Printf("warning: certs directory '%s' does not exist\n", certsDir)
 	}
 
-	f := unsafeGet(os.Create(fmt.Sprintf("/etc/nginx/sites-enabled/%s.conf", host)))
+	f := unsafeGet(os.Create(nginxConf(host)))
 	unsafe(t.Execute(f, data))
 }
 
@@ -248,7 +256,27 @@ func installCmd(s *Service, appEnv []string, host string, port int) {
 func uninstallCmd(host string) {
 	fmt.Printf("Uninstalling %s\n", host)
 
-	// TODO
+	fmt.Printf("Stopping %s\n", host)
+	cmd := exec.Command("systemctl", "stop", host)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+
+	fmt.Printf("Disabling %s\n", host)
+	cmd = exec.Command("systemctl", "disable", host)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+
+	fmt.Printf("Removing config files: %s\n", host)
+	os.Remove(systemdConf(host))
+	os.Remove(nginxConf(host))
+
+	fmt.Println("Restarting nginx")
+	cmd = exec.Command("systemctl", "restart", "nginx")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
 }
 
 func main() {
