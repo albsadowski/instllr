@@ -278,13 +278,23 @@ func installCmd(s *Service, appEnv []string, host string, port int) {
 	deps := resolveDeps(conf.Require)
 	checkEnv(conf.Env, appEnv)
 
+	cmd := exec.Command("systemctl", "stop", host)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+
 	install(s, release, conf, deps, appEnv, dir, host, port)
 	storeVersion(host, release)
 
-	fmt.Printf("\n%s has been installed successfully!\n\nNext:\n", host)
-	fmt.Printf("1. Enable and start the service: systemctl enable --now %s\n", host)
-	fmt.Println("2. Request certificate from certbot")
-	fmt.Printf("3. Re-start nginx: systemctl restart nginx\n")
+	cmd = exec.Command("systemctl", "enable", "--now", host)
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+
+	cmd = exec.Command("systemctl", "restart", "nginx")
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+
+	fmt.Printf("\n%s has been installed successfully!\n", host)
 }
 
 func uninstallCmd(host string) {
