@@ -286,6 +286,10 @@ func installCmd(s *Service, appEnv []string, host string, port int) {
 	install(s, release, conf, deps, appEnv, dir, host, port)
 	storeVersion(host, release)
 
+	cmd = exec.Command("systemctl", "daemon-reload")
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+
 	cmd = exec.Command("systemctl", "enable", "--now", host)
 	cmd.Stderr = os.Stderr
 	cmd.Run()
