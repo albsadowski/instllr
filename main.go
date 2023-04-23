@@ -224,6 +224,23 @@ func parseArgs(args cli.Args) (Command, *Service) {
 	return c, nil
 }
 
+func storageDir() string {
+	dir := "/var/local/instllr"
+	if _, err := os.Stat(dir); err != nil {
+		unsafe(os.MkdirAll(dir, 0777))
+	}
+	return dir
+}
+
+func storeVersion(host string, r *Release) {
+	path := filepath.Join(storageDir(), host)
+	if _, err := os.Stat(path); err == nil {
+		unsafe(os.Remove(path))
+	}
+
+	unsafe(os.WriteFile(path, []byte(r.Tag), 0666))
+}
+
 func installCmd(s *Service, appEnv []string, host string, port int) {
 	fmt.Printf("Installing %s\n", s.String())
 
@@ -246,6 +263,7 @@ func installCmd(s *Service, appEnv []string, host string, port int) {
 	checkEnv(conf.Env, appEnv)
 
 	install(s, release, conf, deps, appEnv, dir, host, port)
+	storeVersion(host, release)
 
 	fmt.Printf("\n%s has been installed successfully!\n\nNext:\n", host)
 	fmt.Printf("1. Enable and start the service: systemctl enable --now %s\n", host)
@@ -271,6 +289,7 @@ func uninstallCmd(host string) {
 	fmt.Printf("Removing config files: %s\n", host)
 	os.Remove(systemdConf(host))
 	os.Remove(nginxConf(host))
+	os.Remove(filepath.Join(storageDir(), host))
 
 	fmt.Println("Restarting nginx")
 	cmd = exec.Command("systemctl", "restart", "nginx")
