@@ -29,6 +29,10 @@ type Conf struct {
 	Env         EnvConf       `json:"env"`
 }
 
+type InstllrConf struct {
+	GhToken string `json:"ghToken"`
+}
+
 func command(cmds ...string) *exec.Cmd {
 	cmd := exec.Command(cmds[0], cmds[1:]...)
 
@@ -38,6 +42,20 @@ func command(cmds ...string) *exec.Cmd {
 	}
 
 	return cmd
+}
+
+func loadInstllrConfig() *InstllrConf {
+	cfgPath := filepath.Join(unsafeGet(os.UserHomeDir()), ".instllr.json")
+	_, err := os.Stat(cfgPath)
+
+	if err == nil {
+		content := unsafeGet(ioutil.ReadFile(cfgPath))
+		var cfg InstllrConf
+		unsafe(json.Unmarshal(content, &cfg))
+		return &cfg
+	}
+
+	return &InstllrConf{GhToken: os.Getenv("GH_TOKEN")}
 }
 
 func loadConfig(dir string) *Conf {

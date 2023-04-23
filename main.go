@@ -255,7 +255,8 @@ func checkInstalledVersion(host string, r *Release) string {
 func installCmd(s *Service, appEnv []string, host string, port int) {
 	fmt.Printf("Installing %s\n", s.String())
 
-	release := getGitHubRelease(s)
+	cfg := loadInstllrConfig()
+	release := getGitHubRelease(cfg, s)
 	if len(release.Assets) != 1 {
 		log.Fatalf("Expected exactly one release asset, found %d", len(release.Assets))
 	}
@@ -268,22 +269,22 @@ func installCmd(s *Service, appEnv []string, host string, port int) {
 	dir := tmpDir()
 	defer os.RemoveAll(dir)
 
-	assetpath := fetchReleaseAsset(&release.Assets[0], dir)
+	assetpath := fetchReleaseAsset(cfg, &release.Assets[0], dir)
 	fmt.Printf("Asset: %s\n", assetpath)
 
 	untar(assetpath, dir)
 	unsafe(os.Remove(assetpath))
 
-	conf := loadConfig(dir)
-	deps := resolveDeps(conf.Require)
-	checkEnv(conf.Env, appEnv)
+	appCfg := loadConfig(dir)
+	deps := resolveDeps(appCfg.Require)
+	checkEnv(appCfg.Env, appEnv)
 
 	cmd := exec.Command("systemctl", "stop", host)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Run()
 
-	install(s, release, conf, deps, appEnv, dir, host, port)
+	install(s, release, appCfg, deps, appEnv, dir, host, port)
 	storeVersion(host, release)
 
 	cmd = exec.Command("systemctl", "daemon-reload")

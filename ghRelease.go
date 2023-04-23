@@ -24,7 +24,17 @@ type Release struct {
 	Assets []ReleaseAsset `json:"assets"`
 }
 
-func getGitHubRelease(s *Service) *Release {
+func ghReq(cfg *InstllrConf, method string, url string) *http.Request {
+	req := unsafeGet(http.NewRequest(method, url, nil))
+
+	if cfg.GhToken != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", cfg.GhToken))
+	}
+
+	return req
+}
+
+func getGitHubRelease(cfg *InstllrConf, s *Service) *Release {
 	var tagFragment string
 	if s.Tag == "" || s.Tag == "latest" {
 		tagFragment = "latest"
@@ -35,12 +45,7 @@ func getGitHubRelease(s *Service) *Release {
 	releaseUrl := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/%s", s.Owner, s.Repo, tagFragment)
 	fmt.Printf("Fetching GitHub release: %s\n", releaseUrl)
 
-	req := unsafeGet(http.NewRequest(http.MethodGet, releaseUrl, nil))
-	ghToken := os.Getenv("GH_TOKEN")
-	if ghToken != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ghToken))
-	}
-
+	req := ghReq(cfg, http.MethodGet, releaseUrl)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -59,12 +64,8 @@ func getGitHubRelease(s *Service) *Release {
 	return &release
 }
 
-func fetchReleaseAsset(asset *ReleaseAsset, dir string) string {
-	req := unsafeGet(http.NewRequest(http.MethodGet, asset.Url, nil))
-	ghToken := os.Getenv("GH_TOKEN")
-	if ghToken != "" {
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", ghToken))
-	}
+func fetchReleaseAsset(cfg *InstllrConf, asset *ReleaseAsset, dir string) string {
+	req := ghReq(cfg, http.MethodGet, asset.Url)
 	req.Header.Set("Accept", "application/octet-stream")
 
 	res := unsafeGet(http.DefaultClient.Do(req))
