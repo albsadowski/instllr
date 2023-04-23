@@ -180,8 +180,8 @@ func install(
 }
 
 func parseArgs(args cli.Args) (Command, *Service) {
-	if args.Len() != 2 {
-		log.Fatal("exactly two arguments expected")
+	if args.Len() > 2 || args.Len() == 0 {
+		log.Fatal("one or two arguments expected")
 	}
 
 	c, ok := commands[strings.ToLower(args.First())]
@@ -189,27 +189,66 @@ func parseArgs(args cli.Args) (Command, *Service) {
 		log.Fatalf("invalid command: %s\n", args.First())
 	}
 
-	arg := args.Get(1)
-	var tag string
-	tagsplit := strings.Split(arg, ":")
-	if len(tagsplit) > 2 {
-		log.Fatalf("invalid argument: %s\n", arg)
-	} else if len(tagsplit) == 2 {
-		tag = tagsplit[1]
-	} else {
-		tag = "latest"
+	if c == Install {
+		arg := args.Get(1)
+		var tag string
+		tagsplit := strings.Split(arg, ":")
+		if len(tagsplit) > 2 {
+			log.Fatalf("invalid argument: %s\n", arg)
+		} else if len(tagsplit) == 2 {
+			tag = tagsplit[1]
+		} else {
+			tag = "latest"
+		}
+
+		split := strings.Split(tagsplit[0], "/")
+		if len(split) != 2 {
+			log.Fatalf("invalid argument: %s\n", arg)
+		}
+
+		return c, &Service{
+			Owner: split[0],
+			Repo:  split[1],
+			Tag:   tag,
+		}
 	}
 
-	split := strings.Split(tagsplit[0], "/")
-	if len(split) != 2 {
-		log.Fatalf("invalid argument: %s\n", arg)
+	return c, nil
+}
+
+func installCmd(s *Service, appEnv []string, host string, port int) {
+	fmt.Printf("Installing %s\n", s.String())
+
+	release := getGitHubRelease(s)
+	if len(release.Assets) != 1 {
+		log.Fatalf("Expected exactly one release asset, found %d", len(release.Assets))
 	}
 
-	return c, &Service{
-		Owner: split[0],
-		Repo:  split[1],
-		Tag:   tag,
-	}
+	dir := tmpDir()
+	defer os.RemoveAll(dir)
+
+	assetpath := fetchReleaseAsset(&release.Assets[0], dir)
+	fmt.Printf("Asset: %s\n", assetpath)
+
+	untar(assetpath, dir)
+	unsafe(os.Remove(assetpath))
+
+	conf := loadConfig(dir)
+	deps := resolveDeps(conf.Require)
+	checkEnv(conf.Env, appEnv)
+
+	install(s, release, conf, deps, appEnv, dir, host, port)
+
+	fmt.Printf("\n%s has been installed successfully!\n\nNext:\n", host)
+	fmt.Printf("1. Enable and start the service: systemctl enable --now %s\n", host)
+	fmt.Println("2. Request certificate from certbot")
+	fmt.Printf("3. Re-start nginx: systemctl restart nginx\n")
+}
+
+func uninstallCmd(host string) {
+	fmt.Printf("Uninstalling %s\n", host)
+
+	// TODO
 }
 
 func main() {
@@ -235,42 +274,21 @@ func main() {
 			&cli.IntFlag{
 				Name:        "port",
 				Usage:       "local application port",
-				Required:    true,
+				Required:    false,
 				Destination: &port,
 			},
 		},
 		Action: func(ctx *cli.Context) error {
 			c, s := parseArgs(ctx.Args())
 			if c == Install {
-				fmt.Printf("Installing %s\n", s.String())
+				if port == 0 {
+					log.Fatalf("invalid port: %d\n", port)
+				}
+
+				installCmd(s, appEnv.Value(), host, port)
 			} else if c == Uninstall {
-				fmt.Printf("Uninstalling %s\n", s.String())
+				uninstallCmd(host)
 			}
-
-			release := getGitHubRelease(s)
-			if len(release.Assets) != 1 {
-				log.Fatalf("Expected exactly one release asset, found %d", len(release.Assets))
-			}
-
-			dir := tmpDir()
-			defer os.RemoveAll(dir)
-
-			assetpath := fetchReleaseAsset(&release.Assets[0], dir)
-			fmt.Printf("Asset: %s\n", assetpath)
-
-			untar(assetpath, dir)
-			unsafe(os.Remove(assetpath))
-
-			conf := loadConfig(dir)
-			deps := resolveDeps(conf.Require)
-			checkEnv(conf.Env, appEnv.Value())
-
-			install(s, release, conf, deps, appEnv.Value(), dir, host, port)
-
-			fmt.Printf("\n%s has been installed successfully!\n\nNext:\n", host)
-			fmt.Printf("1. Enable and start the service: systemctl enable --now %s\n", host)
-			fmt.Println("2. Request certificate from certbot")
-			fmt.Printf("3. Re-start nginx: systemctl restart nginx\n")
 
 			return nil
 		},
