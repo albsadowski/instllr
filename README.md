@@ -23,13 +23,17 @@ instllr --host <my-host.domain.com> \
 * creates a user and a group `<my-host.domain.com>`,
 * untars the asset into `/home/<my-host.domain.com>/...`,
 * creates systemd service file `/etc/systemd/system/<my-host.domain.com>.service`,
-* creates nginx virtual host config file `/etc/nginx/sites-enabled/<my-host.domain.com>.conf`.
+* creates nginx virtual host config file `/etc/nginx/sites-enabled/<my-host.domain.com>.conf`,
+* enables the service `systemctl enable --now <my-host.domain.com>`,
+* re-starts nginx `systemctl restart nginx`.
 
-Next, the service can be run and/or enabled: `systemctl enable --now <my-host.domain.com>`.
+An non-standard simplification is hostname == app name.
 
-In case you don't have the SSL certificates already in place, run: `certbot certonly --standalone`.
+## Pre-requisites
 
-Restart nginx: `systemctl restart nginx`.
+1. Host running linux with systemd.
+2. DNS A record pointing to your host.
+3. Certbot standalone certificate available under `/etc/letsencrypt/live/$HOST` (generate one with `certbot certonly --standalone`).
 
 ## instllr.json
 
@@ -51,3 +55,7 @@ Example:
     "run": ["node", "main.js"]
 }
 ```
+
+## Cron
+
+If you drop `instllr` command with a `latest` tag into your crontab, you have a poor man's continuous delivery.
