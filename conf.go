@@ -134,26 +134,36 @@ var vreplacer = strings.NewReplacer(
 	"\r", "",
 )
 
-func assertVersion(ver string, minv string) {
-	vclean := strings.Split(vreplacer.Replace(ver), ".")
-	minvclean := strings.Split(vreplacer.Replace(minv), ".")
+func cmpVersion(v1 string, v2 string) int {
+	v1clean := strings.Split(vreplacer.Replace(v1), ".")
+	v2clean := strings.Split(vreplacer.Replace(v2), ".")
 
-	if len(vclean) != len(minvclean) {
-		log.Fatalf("incompatible version format: %s vs %s", ver, minv)
+	if len(v1clean) != len(v2clean) {
+		log.Fatalf("incompatible version format: %s vs %s", v1, v2)
 	}
 
-	fatal := func() {
-		log.Fatalf("min version required: %s, found: %s", minv, ver)
-	}
-
-	for ix, v := range vclean {
-		if v < minvclean[ix] {
-			fatal()
+	for ix, v := range v1clean {
+		if v < v2clean[ix] {
+			return -1
 		}
 
-		if v > minvclean[ix] {
+		if v > v2clean[ix] {
 			break
 		}
+	}
+
+	for ix, v := range v1clean {
+		if v != v2clean[ix] {
+			return 1
+		}
+	}
+
+	return 0
+}
+
+func assertVersion(ver string, minv string) {
+	if cmpVersion(ver, minv) < 0 {
+		log.Fatalf("min version required: %s, found: %s", minv, ver)
 	}
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -138,6 +139,26 @@ func proxyTemplate(host string, port int) {
 
 	f := unsafeGet(os.Create(nginxConf(host)))
 	unsafe(t.Execute(f, data))
+}
+
+func removeOldVersions(host string, s *Service, r *Release) {
+	dirPath := filepath.Join("/home", host)
+	files := unsafeGet(ioutil.ReadDir(dirPath))
+	prefix := fmt.Sprintf("%s-%s", s.Owner, s.Repo)
+
+	for _, file := range files {
+		name := file.Name()
+		if !file.IsDir() || !strings.HasPrefix(name, prefix) {
+			continue
+		}
+
+		tag := name[len(prefix)+1:]
+		if cmpVersion(r.Tag, tag) > 0 {
+			dir := filepath.Join(dirPath, name)
+			fmt.Printf("Removing directory: %s\n", dir)
+			unsafe(os.RemoveAll(dir))
+		}
+	}
 }
 
 func install(
@@ -286,6 +307,7 @@ func installCmd(s *Service, appEnv []string, host string, port int) {
 
 	install(s, release, appCfg, deps, appEnv, dir, host, port)
 	storeVersion(host, release)
+	removeOldVersions(host, s, release)
 
 	cmd = exec.Command("systemctl", "daemon-reload")
 	cmd.Stderr = os.Stderr
