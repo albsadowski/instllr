@@ -22,6 +22,11 @@ jobs:
       env:
         GOPATH: /home/runner/work/instllr/go
 
+    - name: Run Tests
+      run: go test
+      env:
+        GOPATH: /home/runner/work/instllr/go
+
     - name: Build
       run: make
       env:

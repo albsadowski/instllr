@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -143,17 +144,23 @@ func cmpVersion(v1 string, v2 string) int {
 	}
 
 	for ix, v := range v1clean {
-		if v < v2clean[ix] {
+		vint := unsafeGet(strconv.Atoi(v))
+		v2int := unsafeGet(strconv.Atoi(v2clean[ix]))
+
+		if vint < v2int {
 			return -1
 		}
 
-		if v > v2clean[ix] {
+		if vint > v2int {
 			break
 		}
 	}
 
 	for ix, v := range v1clean {
-		if v != v2clean[ix] {
+		vint := unsafeGet(strconv.Atoi(v))
+		v2int := unsafeGet(strconv.Atoi(v2clean[ix]))
+
+		if vint != v2int {
 			return 1
 		}
 	}
