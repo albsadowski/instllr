@@ -84,14 +84,14 @@ func nginxConf(host string) string {
 	return fmt.Sprintf("/etc/nginx/sites-enabled/%s.conf", host)
 }
 
-func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []string, targetDir string, uid int, gid int) {
+func serviceTemplate(deps *map[string]string, appName string, runCmd []string, appEnv []string, targetDir string, uid int, gid int) {
 	var run []string
-	cmdPath, found := (*deps)[conf.Run[0]]
+	cmdPath, found := (*deps)[runCmd[0]]
 	if !found {
-		fmt.Printf("warn: command path not resolved %s\n", conf.Run[0])
-		run = conf.Run
+		fmt.Printf("warn: command path not resolved %s\n", runCmd[0])
+		run = runCmd
 	} else {
-		run = append([]string{cmdPath}, conf.Run[1:]...)
+		run = append([]string{cmdPath}, runCmd[1:]...)
 	}
 
 	t := unsafeGet(template.ParseFS(templates, "templates/service.template"))
@@ -104,7 +104,7 @@ func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []
 		Uid        int
 		Gid        int
 	}{
-		AppName:    host,
+		AppName:    appName,
 		ExecStart:  strings.Join(run, " "),
 		Env:        appEnv,
 		WorkingDir: targetDir,
@@ -112,7 +112,7 @@ func serviceTemplate(deps *map[string]string, host string, conf *Conf, appEnv []
 		Gid:        gid,
 	}
 
-	f := unsafeGet(os.Create(systemdConf(host)))
+	f := unsafeGet(os.Create(systemdConf(appName)))
 	unsafe(t.Execute(f, data))
 }
 
@@ -204,8 +204,24 @@ func install(
 	}
 
 	chown(targetDir, host)
-	serviceTemplate(deps, host, conf, appEnv, targetDir, uid, gid)
+	serviceTemplate(deps, host, conf.Run, appEnv, targetDir, uid, gid)
 	proxyTemplate(host, port)
+}
+
+func workerName(w *Worker, host string) string {
+	return fmt.Sprintf("%s-%s", w.Name, host)
+}
+
+func installWorker(
+	s *Service,
+	r *Release,
+	deps *map[string]string,
+	appEnv []string,
+	host string,
+	w *Worker) {
+	uid, gid := ensureUser(host)
+	targetDir := filepath.Join("/home", host, fmt.Sprintf("%s-%s-%s", s.Owner, s.Repo, r.Tag))
+	serviceTemplate(deps, workerName(w, host), w.Run, appEnv, targetDir, uid, gid)
 }
 
 func parseArgs(args cli.Args) (Command, *Service) {
@@ -305,7 +321,18 @@ func installCmd(s *Service, appEnv []string, host string, port int) {
 	cmd.Stderr = os.Stderr
 	cmd.Run()
 
+	for _, w := range appCfg.Workers {
+		cmd = exec.Command("systemctl", "stop", workerName(&w, host))
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Run()
+	}
+
 	install(s, release, appCfg, deps, appEnv, dir, host, port)
+	for _, w := range appCfg.Workers {
+		installWorker(s, release, deps, appEnv, host, &w)
+	}
+
 	storeVersion(host, release)
 	removeOldVersions(host, s, release)
 
@@ -316,6 +343,12 @@ func installCmd(s *Service, appEnv []string, host string, port int) {
 	cmd = exec.Command("systemctl", "enable", "--now", host)
 	cmd.Stderr = os.Stderr
 	cmd.Run()
+
+	for _, w := range appCfg.Workers {
+		cmd = exec.Command("systemctl", "enable", "--now", workerName(&w, host))
+		cmd.Stderr = os.Stderr
+		cmd.Run()
+	}
 
 	cmd = exec.Command("systemctl", "restart", "nginx")
 	cmd.Stderr = os.Stderr

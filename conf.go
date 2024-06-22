@@ -23,11 +23,17 @@ type EnvConf struct {
 	Require []string `json:"require"`
 }
 
+type Worker struct {
+	Name string   `json:"name"`
+	Run  []string `json:"run"`
+}
+
 type Conf struct {
 	Require     []ConfRequire `json:"require"`
 	InstallStep []string      `json:"install"`
 	Run         []string      `json:"run"`
 	Env         EnvConf       `json:"env"`
+	Workers     []Worker      `json:"workers"`
 }
 
 type InstllrConf struct {
