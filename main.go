@@ -388,6 +388,7 @@ func main() {
 	var host string
 	var port int
 	var appEnv cli.StringSlice
+	var appEnvFile string
 
 	app := &cli.App{
 		Name:  "instllr",
@@ -397,6 +398,11 @@ func main() {
 				Name:        "app-env",
 				Usage:       "Application env variables",
 				Destination: &appEnv,
+			},
+			&cli.StringFlag{
+				Name:        "app-env-file",
+				Usage:       "Application env variables file",
+				Destination: &appEnvFile,
 			},
 			&cli.StringFlag{
 				Name:        "host",
@@ -418,7 +424,22 @@ func main() {
 					log.Fatalf("invalid port: %d\n", port)
 				}
 
-				installCmd(s, appEnv.Value(), host, port)
+				env := appEnv.Value()
+				if appEnvFile != "" {
+					bs, err := os.ReadFile(appEnvFile)
+					if err != nil {
+						log.Fatalf("error reading app env file: %s\n", err)
+					}
+
+					lines := strings.Split(string(bs), "\n")
+					for _, line := range lines {
+						if line != "" {
+							env = append(env, line)
+						}
+					}
+				}
+
+				installCmd(s, env, host, port)
 			} else if c == Uninstall {
 				uninstallCmd(host)
 			}
