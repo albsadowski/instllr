@@ -76,15 +76,15 @@ func ensureUser(appName string) (int, int) {
 	return unsafeGet(id(appName, "-u")), unsafeGet(id(appName, "-g"))
 }
 
-func systemdConf(host string) string {
-	return fmt.Sprintf("/etc/systemd/system/%s.service", host)
+func systemdConf(name string) string {
+	return fmt.Sprintf("/etc/systemd/system/%s.service", name)
 }
 
 func nginxConf(host string) string {
 	return fmt.Sprintf("/etc/nginx/sites-enabled/%s.conf", host)
 }
 
-func serviceTemplate(deps *map[string]string, appName string, runCmd []string, appEnv []string, targetDir string, uid int, gid int) {
+func serviceTemplate(deps *map[string]string, name string, runCmd []string, appEnv []string, targetDir string, uid int, gid int) {
 	var run []string
 	cmdPath, found := (*deps)[runCmd[0]]
 	if !found {
@@ -104,7 +104,7 @@ func serviceTemplate(deps *map[string]string, appName string, runCmd []string, a
 		Uid        int
 		Gid        int
 	}{
-		AppName:    appName,
+		AppName:    name,
 		ExecStart:  strings.Join(run, " "),
 		Env:        appEnv,
 		WorkingDir: targetDir,
@@ -112,7 +112,7 @@ func serviceTemplate(deps *map[string]string, appName string, runCmd []string, a
 		Gid:        gid,
 	}
 
-	f := unsafeGet(os.Create(systemdConf(appName)))
+	f := unsafeGet(os.Create(systemdConf(name)))
 	unsafe(t.Execute(f, data))
 }
 
@@ -168,11 +168,12 @@ func install(
 	deps *map[string]string,
 	appEnv []string,
 	src string,
+	name string,
 	host string,
 	port int) {
-	uid, gid := ensureUser(host)
+	uid, gid := ensureUser(name)
 
-	targetDir := filepath.Join("/home", host, fmt.Sprintf("%s-%s-%s", s.Owner, s.Repo, r.Tag))
+	targetDir := filepath.Join("/home", name, fmt.Sprintf("%s-%s-%s", s.Owner, s.Repo, r.Tag))
 	if _, err := os.Stat(targetDir); err == nil {
 		unsafe(os.RemoveAll(targetDir))
 	}
@@ -203,13 +204,15 @@ func install(
 		}
 	}
 
-	chown(targetDir, host)
-	serviceTemplate(deps, host, conf.Run, appEnv, targetDir, uid, gid)
-	proxyTemplate(host, port)
+	chown(targetDir, name)
+	serviceTemplate(deps, name, conf.Run, appEnv, targetDir, uid, gid)
+	if host != "" {
+		proxyTemplate(host, port)
+	}
 }
 
-func workerName(w *Worker, host string) string {
-	return fmt.Sprintf("%s-%s", w.Name, host)
+func workerName(w *Worker, name string) string {
+	return fmt.Sprintf("%s-%s", w.Name, name)
 }
 
 func installWorker(
@@ -217,11 +220,11 @@ func installWorker(
 	r *Release,
 	deps *map[string]string,
 	appEnv []string,
-	host string,
+	name string,
 	w *Worker) {
-	uid, gid := ensureUser(host)
-	targetDir := filepath.Join("/home", host, fmt.Sprintf("%s-%s-%s", s.Owner, s.Repo, r.Tag))
-	serviceTemplate(deps, workerName(w, host), w.Run, appEnv, targetDir, uid, gid)
+	uid, gid := ensureUser(name)
+	targetDir := filepath.Join("/home", name, fmt.Sprintf("%s-%s-%s", s.Owner, s.Repo, r.Tag))
+	serviceTemplate(deps, workerName(w, name), w.Run, appEnv, targetDir, uid, gid)
 }
 
 func parseArgs(args cli.Args) (Command, *Service) {
@@ -278,8 +281,8 @@ func storeVersion(host string, r *Release) {
 	unsafe(os.WriteFile(path, []byte(r.Tag), 0666))
 }
 
-func checkInstalledVersion(host string, r *Release) string {
-	bs, err := os.ReadFile(filepath.Join(storageDir(), host))
+func checkInstalledVersion(name string, r *Release) string {
+	bs, err := os.ReadFile(filepath.Join(storageDir(), name))
 	if err != nil {
 		return ""
 	}
@@ -289,7 +292,7 @@ func checkInstalledVersion(host string, r *Release) string {
 	return ver
 }
 
-func installCmd(s *Service, appEnv []string, host string, port int) {
+func installCmd(s *Service, appEnv []string, name string, host string, port int) {
 	fmt.Printf("Installing %s\n", s.String())
 
 	cfg := loadInstllrConfig()
@@ -298,7 +301,7 @@ func installCmd(s *Service, appEnv []string, host string, port int) {
 		log.Fatalf("Expected exactly one release asset, found %d", len(release.Assets))
 	}
 
-	currVer := checkInstalledVersion(host, release)
+	currVer := checkInstalledVersion(name, release)
 	if currVer == release.Tag {
 		log.Fatalf("Version %s already installed\n", currVer)
 	}
@@ -316,76 +319,81 @@ func installCmd(s *Service, appEnv []string, host string, port int) {
 	deps := resolveDeps(appCfg.Require)
 	checkEnv(appCfg.Env, appEnv)
 
-	cmd := exec.Command("systemctl", "stop", host)
+	cmd := exec.Command("systemctl", "stop", name)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Run()
 
 	for _, w := range appCfg.Workers {
-		cmd = exec.Command("systemctl", "stop", workerName(&w, host))
+		cmd = exec.Command("systemctl", "stop", workerName(&w, name))
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Run()
 	}
 
-	install(s, release, appCfg, deps, appEnv, dir, host, port)
+	install(s, release, appCfg, deps, appEnv, dir, name, host, port)
 	for _, w := range appCfg.Workers {
-		installWorker(s, release, deps, appEnv, host, &w)
+		installWorker(s, release, deps, appEnv, name, &w)
 	}
 
-	storeVersion(host, release)
-	removeOldVersions(host, s, release)
+	storeVersion(name, release)
+	removeOldVersions(name, s, release)
 
 	cmd = exec.Command("systemctl", "daemon-reload")
 	cmd.Stderr = os.Stderr
 	cmd.Run()
 
-	cmd = exec.Command("systemctl", "enable", "--now", host)
+	cmd = exec.Command("systemctl", "enable", "--now", name)
 	cmd.Stderr = os.Stderr
 	cmd.Run()
 
 	for _, w := range appCfg.Workers {
-		cmd = exec.Command("systemctl", "enable", "--now", workerName(&w, host))
+		cmd = exec.Command("systemctl", "enable", "--now", workerName(&w, name))
 		cmd.Stderr = os.Stderr
 		cmd.Run()
 	}
 
-	cmd = exec.Command("systemctl", "restart", "nginx")
-	cmd.Stderr = os.Stderr
-	cmd.Run()
+	if host != "" {
+		cmd = exec.Command("systemctl", "restart", "nginx")
+		cmd.Stderr = os.Stderr
+		cmd.Run()
+	}
 
-	fmt.Printf("\n%s has been installed successfully!\n", host)
+	fmt.Printf("\n%s has been installed successfully!\n", name)
 }
 
-func uninstallCmd(host string) {
-	fmt.Printf("Uninstalling %s\n", host)
+func uninstallCmd(name string, host string) {
+	fmt.Printf("Uninstalling %s\n", name)
 
-	fmt.Printf("Stopping %s\n", host)
-	cmd := exec.Command("systemctl", "stop", host)
+	fmt.Printf("Stopping %s\n", name)
+	cmd := exec.Command("systemctl", "stop", name)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Run()
 
-	fmt.Printf("Disabling %s\n", host)
-	cmd = exec.Command("systemctl", "disable", host)
+	fmt.Printf("Disabling %s\n", name)
+	cmd = exec.Command("systemctl", "disable", name)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Run()
 
-	fmt.Printf("Removing config files: %s\n", host)
-	os.Remove(systemdConf(host))
-	os.Remove(nginxConf(host))
-	os.Remove(filepath.Join(storageDir(), host))
+	fmt.Printf("Removing config files: %s\n", name)
+	os.Remove(systemdConf(name))
+	os.Remove(filepath.Join(storageDir(), name))
 
-	fmt.Println("Restarting nginx")
-	cmd = exec.Command("systemctl", "restart", "nginx")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
+	if host != "" {
+		os.Remove(nginxConf(host))
+		fmt.Println("Restarting nginx")
+		cmd = exec.Command("systemctl", "restart", "nginx")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		cmd.Run()
+	}
 }
 
 func main() {
 	var host string
+	var name string
 	var port int
 	var appEnv cli.StringSlice
 	var appEnvFile string
@@ -407,8 +415,14 @@ func main() {
 			&cli.StringFlag{
 				Name:        "host",
 				Usage:       "Hostname",
-				Required:    true,
+				Required:    false,
 				Destination: &host,
+			},
+			&cli.StringFlag{
+				Name:        "name",
+				Usage:       "Name",
+				Required:    false,
+				Destination: &name,
 			},
 			&cli.IntFlag{
 				Name:        "port",
@@ -419,9 +433,17 @@ func main() {
 		},
 		Action: func(ctx *cli.Context) error {
 			c, s := parseArgs(ctx.Args())
+			serviceName := name
+			if serviceName == "" {
+				serviceName = host
+			}
+
 			if c == Install {
 				if port == 0 {
 					log.Fatalf("invalid port: %d\n", port)
+				}
+				if host == "" && name == "" {
+					log.Fatal("both host and name are empty")
 				}
 
 				env := appEnv.Value()
@@ -439,9 +461,9 @@ func main() {
 					}
 				}
 
-				installCmd(s, env, host, port)
+				installCmd(s, env, serviceName, host, port)
 			} else if c == Uninstall {
-				uninstallCmd(host)
+				uninstallCmd(serviceName, host)
 			}
 
 			return nil
