@@ -46,6 +46,8 @@ func untar(path string, target string) {
 
 			unsafeGet(io.Copy(w, tarReader))
 			w.Close()
+
+			unsafe(os.Chmod(fp, header.FileInfo().Mode()))
 		}
 	}
 }
