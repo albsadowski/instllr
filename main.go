@@ -94,6 +94,10 @@ func serviceTemplate(deps *map[string]string, name string, runCmd []string, appE
 		run = append([]string{cmdPath}, runCmd[1:]...)
 	}
 
+	for i := range run {
+		run[i] = strings.Replace(run[i], "{WD}", targetDir, -1)
+	}
+
 	t := unsafeGet(template.ParseFS(templates, "templates/service.template"))
 
 	data := struct {
