@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type ReleaseAsset struct {
@@ -22,6 +23,23 @@ type Release struct {
 	Tag    string         `json:"tag_name"`
 	Name   string         `json:"name"`
 	Assets []ReleaseAsset `json:"assets"`
+}
+
+func (r *Release) GetAsset(assetName string) *ReleaseAsset {
+	if assetName == "" {
+		if len(r.Assets) == 0 {
+			return nil
+		}
+		return &r.Assets[0]
+	}
+
+	for _, asset := range r.Assets {
+		if strings.HasPrefix(asset.Name, assetName) {
+			return &asset
+		}
+	}
+
+	return nil
 }
 
 func ghReq(cfg *InstllrConf, method string, url string) *http.Request {

@@ -292,14 +292,25 @@ func checkInstalledVersion(name string, r *Release) string {
 	return ver
 }
 
-func installCmd(s *Service, appEnv []string, name string, host string, port int) {
+func validateAssets(release *Release, assetName string) {
+	if assetName == "" {
+		if len(release.Assets) != 1 {
+			log.Fatalf("Expected exactly one release asset, found %d", len(release.Assets))
+		}
+	} else {
+		asset := release.GetAsset(assetName)
+		if asset == nil {
+			log.Fatal("asset not found")
+		}
+	}
+}
+
+func installCmd(s *Service, appEnv []string, name string, host string, port int, assetName string) {
 	fmt.Printf("Installing %s\n", s.String())
 
 	cfg := loadInstllrConfig()
 	release := getGitHubRelease(cfg, s)
-	if len(release.Assets) != 1 {
-		log.Fatalf("Expected exactly one release asset, found %d", len(release.Assets))
-	}
+	validateAssets(release, assetName)
 
 	currVer := checkInstalledVersion(name, release)
 	if currVer == release.Tag {
@@ -309,7 +320,7 @@ func installCmd(s *Service, appEnv []string, name string, host string, port int)
 	dir := tmpDir()
 	defer os.RemoveAll(dir)
 
-	assetpath := fetchReleaseAsset(cfg, &release.Assets[0], dir)
+	assetpath := fetchReleaseAsset(cfg, release.GetAsset(assetName), dir)
 	fmt.Printf("Asset: %s\n", assetpath)
 
 	untar(assetpath, dir)
@@ -397,6 +408,7 @@ func main() {
 	var port int
 	var appEnv cli.StringSlice
 	var appEnvFile string
+	var assetName string
 
 	app := &cli.App{
 		Name:  "instllr",
@@ -430,6 +442,12 @@ func main() {
 				Required:    false,
 				Destination: &port,
 			},
+			&cli.StringFlag{
+				Name:        "asset-name",
+				Usage:       "Name of the asset (filename prefix)",
+				Required:    false,
+				Destination: &assetName,
+			},
 		},
 		Action: func(ctx *cli.Context) error {
 			c, s := parseArgs(ctx.Args())
@@ -461,7 +479,7 @@ func main() {
 					}
 				}
 
-				installCmd(s, env, serviceName, host, port)
+				installCmd(s, env, serviceName, host, port, assetName)
 			} else if c == Uninstall {
 				uninstallCmd(serviceName, host)
 			}
