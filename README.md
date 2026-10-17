@@ -29,6 +29,40 @@ instllr --host <my-host.domain.com> \
 
 An non-standard simplification is hostname == app name.
 
+### Multiple hostnames and wildcard subdomains
+
+Use `--server-name` once per nginx server name. When supplied, these names replace
+the default `server_name` of `--host` in both the HTTP and HTTPS blocks. HTTP
+requests redirect to HTTPS on the requested hostname, preserving paths and query
+strings. Without `--server-name`, nginx continues to serve and redirect to `--host`.
+
+```sh
+instllr --host api.example.com \
+        --server-name example.com \
+        --server-name '*.example.com' \
+        --port 1323 \
+        --ws \
+        install owner/repo
+```
+
+Quote wildcard names so the shell does not expand them. Literal names and leading
+wildcards such as `*.example.com` are supported; nginx regular expressions are not.
+
+`--host` still determines the nginx filename, log directory, certificate directory,
+and default service name. The example therefore updates the existing
+`api.example.com` installation and `/etc/nginx/sites-enabled/api.example.com.conf`,
+using certificates under `/etc/letsencrypt/live/api.example.com/`. `--name` can
+override the service name independently. `--server-name` requires `--host`.
+
+The certificate must cover every configured name. A wildcard needs DNS-01
+validation, and `*.example.com` does not cover `example.com` itself. Certificate
+issuance remains separate from instllr. When updating an existing installation,
+Certbot's `--cert-name api.example.com` can keep the existing certificate directory
+while changing its domains to `example.com` and `*.example.com`.
+
+As with any install, an already-installed release is skipped. Apply changed server
+names when installing a newer application release.
+
 ## Pre-requisites
 
 1. Host running linux with systemd.

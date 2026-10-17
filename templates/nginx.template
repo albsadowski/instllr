@@ -2,14 +2,14 @@ server {
     listen 80;
     listen [::]:80;
 
-    server_name {{ .Host }};
+    server_name {{ .ServerNames }};
 
-    rewrite ^ https://{{ .Host }}$request_uri? permanent;
+    return 301 https://{{ .RedirectHost }}$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name {{ .Host }};
+    server_name {{ .ServerNames }};
 
     access_log /var/log/{{ .Host }}/access_log;
     error_log /var/log/{{ .Host }}/error_log;

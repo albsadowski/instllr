@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
 	"io/ioutil"
@@ -120,20 +121,65 @@ func serviceTemplate(deps *map[string]string, name string, runCmd []string, appE
 	unsafe(t.Execute(f, data))
 }
 
-func proxyTemplate(host string, upstreamHost string, upstreamPort int, ws bool) {
-	t := unsafeGet(template.ParseFS(templates, "templates/nginx.template"))
+func validateServerNames(host string, serverNames []string) error {
+	if len(serverNames) > 0 && host == "" {
+		return fmt.Errorf("--server-name requires --host")
+	}
+	for _, name := range serverNames {
+		literal := strings.TrimPrefix(name, "*.")
+		if literal == "" {
+			return fmt.Errorf("invalid server name %q: expected a literal name or leading wildcard", name)
+		}
+		for _, c := range literal {
+			if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '.' || c == '-' || c == '_' {
+				continue
+			}
+			return fmt.Errorf("invalid server name %q: expected a literal name or leading wildcard", name)
+		}
+	}
+	return nil
+}
+
+func renderProxyTemplate(host string, serverNames []string, upstreamHost string, upstreamPort int, ws bool) ([]byte, error) {
+	if err := validateServerNames(host, serverNames); err != nil {
+		return nil, err
+	}
+	t, err := template.ParseFS(templates, "templates/nginx.template")
+	if err != nil {
+		return nil, err
+	}
+
+	redirectHost := host
+	if len(serverNames) == 0 {
+		serverNames = []string{host}
+	} else {
+		redirectHost = "$host"
+	}
 
 	data := struct {
 		Host         string
+		ServerNames  string
+		RedirectHost string
 		UpstreamPort int
 		UpstreamHost string
 		WS           bool
 	}{
 		Host:         host,
+		ServerNames:  strings.Join(serverNames, " "),
+		RedirectHost: redirectHost,
 		UpstreamPort: upstreamPort,
 		UpstreamHost: upstreamHost,
 		WS:           ws,
 	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, data); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func proxyTemplate(host string, serverNames []string, upstreamHost string, upstreamPort int, ws bool) {
+	config := unsafeGet(renderProxyTemplate(host, serverNames, upstreamHost, upstreamPort, ws))
 
 	logsDir := fmt.Sprintf("/var/log/%s", host)
 	if _, err := os.Stat(logsDir); err != nil {
@@ -145,8 +191,7 @@ func proxyTemplate(host string, upstreamHost string, upstreamPort int, ws bool) 
 		fmt.Printf("warning: certs directory '%s' does not exist\n", certsDir)
 	}
 
-	f := unsafeGet(os.Create(nginxConf(host)))
-	unsafe(t.Execute(f, data))
+	unsafe(os.WriteFile(nginxConf(host), config, 0666))
 }
 
 func removeOldVersions(host string, s *Service, r *Release) {
@@ -178,6 +223,7 @@ func install(
 	src string,
 	name string,
 	host string,
+	serverNames []string,
 	upstreamHost string,
 	upstreamPort int,
 	ws bool) {
@@ -217,7 +263,7 @@ func install(
 	chown(targetDir, name)
 	serviceTemplate(deps, name, conf.Run, appEnv, targetDir, uid, gid)
 	if host != "" {
-		proxyTemplate(host, upstreamHost, upstreamPort, ws)
+		proxyTemplate(host, serverNames, upstreamHost, upstreamPort, ws)
 	}
 }
 
@@ -315,7 +361,7 @@ func validateAssets(release *Release, assetName string) {
 	}
 }
 
-func installCmd(s *Service, appEnv []string, name string, host string, upstreamHost string, upstreamPort int, assetName string, ws bool, tmpDirBase string) {
+func installCmd(s *Service, appEnv []string, name string, host string, serverNames []string, upstreamHost string, upstreamPort int, assetName string, ws bool, tmpDirBase string) {
 	fmt.Printf("Installing %s\n", s.String())
 
 	cfg := loadInstllrConfig()
@@ -352,7 +398,7 @@ func installCmd(s *Service, appEnv []string, name string, host string, upstreamH
 		cmd.Run()
 	}
 
-	install(s, release, appCfg, deps, appEnv, dir, name, host, upstreamHost, upstreamPort, ws)
+	install(s, release, appCfg, deps, appEnv, dir, name, host, serverNames, upstreamHost, upstreamPort, ws)
 	for _, w := range appCfg.Workers {
 		installWorker(s, release, deps, appEnv, name, &w)
 	}
@@ -412,8 +458,9 @@ func uninstallCmd(name string, host string) {
 	}
 }
 
-func main() {
+func newApp() *cli.App {
 	var host string
+	var serverNames cli.StringSlice
 	var name string
 	var upstreamHost string
 	var upstreamPort int
@@ -442,6 +489,15 @@ func main() {
 				Usage:       "Hostname",
 				Required:    false,
 				Destination: &host,
+			},
+			&cli.StringSliceFlag{
+				Name:        "server-name",
+				Usage:       "Nginx server name (repeatable; defaults to --host; explicit names preserve the host in HTTPS redirects)",
+				Destination: &serverNames,
+				KeepSpace:   true,
+				Action: func(ctx *cli.Context, values []string) error {
+					return validateServerNames(ctx.String("host"), values)
+				},
 			},
 			&cli.StringFlag{
 				Name:        "name",
@@ -513,7 +569,7 @@ func main() {
 					}
 				}
 
-				installCmd(s, env, serviceName, host, upstreamHost, upstreamPort, assetName, ws, tmpDirBase)
+				installCmd(s, env, serviceName, host, serverNames.Value(), upstreamHost, upstreamPort, assetName, ws, tmpDirBase)
 			} else if c == Uninstall {
 				uninstallCmd(serviceName, host)
 			}
@@ -522,5 +578,9 @@ func main() {
 		},
 	}
 
-	unsafe(app.Run(os.Args))
+	return app
+}
+
+func main() {
+	unsafe(newApp().Run(os.Args))
 }
